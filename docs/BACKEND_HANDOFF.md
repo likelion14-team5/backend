@@ -202,7 +202,11 @@ backend/
 │  ├─ test_daily_service.py     # Daily 요청 계약
 │  ├─ test_openapi_scope.py     # 현재 API 범위
 │  └─ test_participant_token.py # 토큰 보안
-├─ .local-video-check/          # Git 제외된 임시 검증 프론트
+├─ .local-video-check/          # 저장소에 포함된 로컬 검증 프론트
+│  ├─ index.html                # 회의 생성·참가·회의 화면
+│  ├─ styles.css                # 최소 확인용 UI
+│  ├─ app.js                    # API·Daily iframe·Web Speech 연결
+│  └─ serve.py                  # SPA fallback 로컬 서버
 ├─ docs/
 │  ├─ examples/
 │  │  ├─ web-speech-recognition.js      # 프론트 인수인계용 Web Speech 컨트롤러
@@ -702,7 +706,7 @@ node --test --test-isolation=none docs/examples/web-speech-recognition.test.js
 
 ---
 
-## 14. 임시 화상회의 프론트
+## 14. 로컬 화상회의 테스트 프론트
 
 위치:
 
@@ -716,7 +720,7 @@ node --test --test-isolation=none docs/examples/web-speech-recognition.test.js
 - `styles.css`: 최소 확인용 UI
 - `app.js`: API 호출, sessionStorage, Daily iframe, polling, Web Speech UI 연결
 - `serve.py`: SPA fallback과 인수인계용 Web Speech 컨트롤러 제공
-- `docs/examples/web-speech-recognition.js`: Git에 남는 실제 Web Speech 컨트롤러
+- `docs/examples/web-speech-recognition.js`: 프론트와 정식 React가 재사용할 Web Speech 컨트롤러
 
 실행:
 
@@ -747,15 +751,15 @@ http://localhost:5173
 9. 초대 링크를 다른 브라우저에서 열어 Daily 연결 확인
 10. 호스트가 회의 종료
 
-이 프론트는 정식 제품 코드가 아니다.
+이 프론트는 저장소에 포함된 로컬 QA 도구이며 정식 제품 프론트는 아니다.
 
 - 빌드 도구 없이 연결 검증만 수행한다.
-- `.gitignore`에 등록되어 있다.
-- 정식 React 저장소가 준비되면 삭제한다.
-- Git에 강제로 추가하지 않는다.
-- 단, 재사용 Web Speech 코드는 `docs/examples/web-speech-recognition.js`에 별도로 남는다.
+- `index.html`, `styles.css`, `app.js`, `serve.py`는 Git에 포함한다.
+- 실행 중 생성되는 `*.log`, `__pycache__`, `*.pyc`는 Git에 포함하지 않는다.
+- 정식 React 프론트가 같은 검증 범위를 대체한 뒤 삭제 여부를 결정한다.
+- 재사용 Web Speech 코드는 `docs/examples/web-speech-recognition.js`에도 별도로 유지한다.
 
-삭제 대상:
+정식 React 전환 후 정리 후보:
 
 ```text
 backend/.local-video-check
@@ -1139,7 +1143,7 @@ OpenAI 공식 참고:
 
 - `.env.example` placeholder 정리
 - 전체 파일 인코딩과 README 표시 확인
-- 임시 프론트 삭제 또는 계속 ignore
+- 로컬 테스트 프론트와 정식 React의 검증 범위 대조
 - Git 첫 commit 전 secret 검사
 - 현재 15개 테스트 재실행
 
@@ -1366,7 +1370,8 @@ Get-NetTCPConnection -LocalPort 5173 -State Listen
 - [ ] 참가자 원문 token
 - [ ] Daily meeting token
 - [ ] 테스트 로그의 민감정보
-- [ ] `.local-video-check/`
+- [ ] `.local-video-check/*.log`
+- [ ] `.local-video-check/__pycache__/`
 
 ### 22.2 첫 commit 전 확인
 
@@ -1379,7 +1384,7 @@ git diff -- .gitignore .env.example
 
 - `.env.example`의 DB 비밀번호가 placeholder인지
 - `.env.example`의 API key가 placeholder인지
-- `.local-video-check/`가 ignore되는지
+- `.local-video-check`의 소스 4개만 포함되고 로그·캐시는 제외되는지
 - migration과 ORM 모델이 일치하는지
 - 문서와 실제 API 범위가 일치하는지
 
@@ -1391,11 +1396,12 @@ git diff -- .gitignore .env.example
 .\.venv\Scripts\python.exe -m alembic check
 ```
 
-### 22.4 현재 작업 정책
+### 22.4 현재 Git 반영 정책
 
-- 사용자의 명시적 요청에 따라 현재까지 GitHub push를 하지 않았다.
-- 임시 프론트는 Git에 포함하지 않는다.
-- push 전 사용자가 최종 파일 범위를 직접 확인한다.
+- 기능 코드는 개인 브랜치 `jongwon`에서 커밋한 뒤 개발 브랜치 `dev`에 병합한다.
+- `main`에는 개발 기능을 바로 병합하지 않는다.
+- 로컬 테스트 프론트의 소스 4개는 Git에 포함하고 로그·캐시는 제외한다.
+- push 전 `.env`, 실제 API key, DB 비밀번호와 stage 범위를 확인한다.
 
 ---
 
