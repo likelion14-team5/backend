@@ -8,4 +8,4 @@ pytest-cache-files-*/
 .ruff_cache/
 .venv/
 htmlcov/
-.local-video-check/
+*.log
