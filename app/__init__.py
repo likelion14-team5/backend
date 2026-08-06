@@ -1,0 +1,1 @@
+"""Global meeting backend application."""
