@@ -27,14 +27,14 @@ docker compose up -d db
 
 실행 설정은 항상 `backend/.env`에서 읽습니다. `.env.example`은 최초 `.env` 생성용 형식 예시일 뿐이며 애플리케이션이 직접 읽지 않습니다. 이미 `.env`가 있으면 복사 명령으로 덮어쓰지 마세요. `.env`의 `DAILY_API_KEY`를 실제 키로 설정해야 회의 생성과 미디어 세션 발급이 동작합니다. API 문서는 `http://localhost:8000/docs`에서 확인할 수 있습니다.
 
-임시 확인 프론트까지 사용할 때는 위 FastAPI 터미널을 그대로 둔 채 **새 PowerShell 터미널**을 열어 다음 명령을 실행합니다.
+저장소에 포함된 로컬 테스트 프론트를 사용할 때는 위 FastAPI 터미널을 그대로 둔 채 **새 PowerShell 터미널**을 열어 다음 명령을 실행합니다.
 
 ```powershell
 cd D:\Code\VScode-code\likelion14-team5\backend
 .\.venv\Scripts\python.exe .local-video-check\serve.py
 ```
 
-FastAPI `8000`과 임시 프론트 `5173` 두 프로세스가 모두 실행 중이어야 합니다.
+FastAPI `8000`과 테스트 프론트 `5173` 두 프로세스가 모두 실행 중이어야 합니다. `http://localhost:5173`에서 회의를 생성한 뒤 음성 분석 동의, 한국어/영어 선택, 음성 인식 시작, interim/final 문장, 초대 링크 입장과 회의 종료를 순서대로 확인합니다. 상세 절차는 `docs/BACKEND_HANDOFF.md`의 **14. 로컬 화상회의 테스트 프론트**를 참고합니다.
 
 주요 환경변수:
 
