@@ -40,6 +40,15 @@ const elements = {
   speechCopy: document.querySelector("#speech-copy"),
   speechClear: document.querySelector("#speech-clear"),
   message: document.querySelector("#message"),
+  aiProficiency: document.querySelector("#ai-proficiency"),
+  aiCommunicationStyle: document.querySelector("#ai-communication-style"),
+  aiJobRole: document.querySelector("#ai-job-role"),
+  aiKoreanText: document.querySelector("#ai-korean-text"),
+  aiMeetingContext: document.querySelector("#ai-meeting-context"),
+  aiPreSpeechBtn: document.querySelector("#ai-pre-speech-btn"),
+  aiPreSpeechResult: document.querySelector("#ai-pre-speech-result"),
+  aiSpeechFeedbackBtn: document.querySelector("#ai-speech-feedback-btn"),
+  aiSpeechFeedbackResult: document.querySelector("#ai-speech-feedback-result"),
 };
 
 function meetingIdFromPath() {
@@ -188,6 +197,91 @@ async function api(path, options = {}) {
   if (response.status === 204) return null;
   return response.json();
 }
+
+function aiCounterpartProfile() {
+  return {
+    proficiency: elements.aiProficiency.value,
+    communication_style: elements.aiCommunicationStyle.value,
+    job_role: elements.aiJobRole.value.trim() || "Product Manager",
+    additional_considerations: null,
+  };
+}
+
+function showAiResult(target, text, { error = false, flagged = false } = {}) {
+  target.textContent = text;
+  target.classList.remove("hidden", "error", "flagged");
+  if (error) target.classList.add("error");
+  if (flagged) target.classList.add("flagged");
+}
+
+elements.aiPreSpeechBtn.addEventListener("click", async () => {
+  const koreanText = elements.aiKoreanText.value.trim();
+  if (!koreanText) {
+    showAiResult(elements.aiPreSpeechResult, "한국어 문장을 입력해주세요.", { error: true });
+    return;
+  }
+
+  elements.aiPreSpeechBtn.disabled = true;
+  try {
+    const response = await api("/ai/pre-speech", {
+      method: "POST",
+      body: JSON.stringify({
+        korean_text: koreanText,
+        counterpart_profile: aiCounterpartProfile(),
+        meeting_context: elements.aiMeetingContext.value.trim() || "일정 조율 회의",
+      }),
+    });
+    const { expression, reason } = response.data;
+    showAiResult(elements.aiPreSpeechResult, `"${expression}"\n\n${reason}`);
+  } catch (error) {
+    showAiResult(elements.aiPreSpeechResult, error.message, { error: true });
+  } finally {
+    elements.aiPreSpeechBtn.disabled = false;
+  }
+});
+
+elements.aiSpeechFeedbackBtn.addEventListener("click", async () => {
+  const latestEnglish = [...state.speechFinals].reverse().find((item) => item.language === "en-US");
+  if (!latestEnglish) {
+    showAiResult(
+      elements.aiSpeechFeedbackResult,
+      "먼저 왼쪽에서 English로 말해 확정 문장을 만들어주세요.",
+      { error: true },
+    );
+    return;
+  }
+
+  elements.aiSpeechFeedbackBtn.disabled = true;
+  try {
+    const recentMessages = state.speechFinals
+      .filter((item) => item.language === "en-US" && item !== latestEnglish)
+      .map((item) => item.transcript)
+      .slice(-5);
+
+    const response = await api("/ai/speech-feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        english_text: latestEnglish.transcript,
+        recent_messages: recentMessages,
+        counterpart_profile: aiCounterpartProfile(),
+      }),
+    });
+    const result = response.data;
+    if (!result.flagged) {
+      showAiResult(elements.aiSpeechFeedbackResult, `"${latestEnglish.transcript}"\n\n문제 없음`);
+    } else {
+      showAiResult(
+        elements.aiSpeechFeedbackResult,
+        `"${latestEnglish.transcript}"\n\n[${result.type}] ${result.reason}\n\n대안: ${result.alternative}`,
+        { flagged: true },
+      );
+    }
+  } catch (error) {
+    showAiResult(elements.aiSpeechFeedbackResult, error.message, { error: true });
+  } finally {
+    elements.aiSpeechFeedbackBtn.disabled = false;
+  }
+});
 
 function profilePayload() {
   const languages = document.querySelector("#languages").value
