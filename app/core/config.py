@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     daily_room_ttl_minutes: int = Field(default=180, ge=15, le=1440)
     daily_token_ttl_minutes: int = Field(default=120, ge=5, le=1440)
     daily_request_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    openai_api_key: SecretStr = SecretStr("")
+    openai_model: str = "gpt-4o-mini"
+    openai_request_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
     sql_echo: bool = False
 
     @field_validator("daily_api_base_url")
