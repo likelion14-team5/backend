@@ -94,24 +94,39 @@
 - `ko-KR`·`en-US` 선택형 Web Speech 음성→텍스트 컨트롤러
 - interim/final transcript 분리 및 최근 final 3개 탭 메모리 표시
 - AI 담당자가 연결할 `webspeech-final-transcript` 브라우저 이벤트
+- F-02/F-03 AI 엔드포인트 (`POST /api/v1/ai/pre-speech`, `POST /api/v1/ai/speech-feedback`) — **단, 아래 3.3.1의 단순화된 형태**
 
 ### 3.3 아직 구현하지 않은 기능
 
 - 회원가입, 로그인, JWT, refresh token
-- F-02 발언 전 영어 표현 추천
-- F-03 본인 발언 후 오해 위험 분석
 - 정식 React에서의 SpeechRecognition 연동
 - Daily 마이크 mute 상태와 SpeechRecognition 자동 동기화
-- final transcript의 FastAPI 전송
-- OpenAI Responses API 연동
-- AI 요청 rate limit과 timeout 정책
-- `pre_speech_requests` 테이블
-- `speech_feedback` 테이블
+- final transcript의 FastAPI 전송 (프론트가 아직 AI 엔드포인트를 호출하지 않음)
+- 참가자 토큰 인증이 걸린 회의 범위 AI 엔드포인트 (`/meetings/{meeting_id}/pre-speech` 등 6절 표의 12~17번 스펙 경로)
+- AI 요청 rate limit 정책 (timeout은 구현됨, rate limit 대응은 없음 — 3.3.1 참고)
+- `pre_speech_requests` 테이블, `speech_feedback` 테이블 (DB 저장 없음, 매 요청이 stateless)
+- 30초 중복 경고 억제 (16.6절)
 - 정식 React 프론트엔드
 - WebSocket/SSE 기반 실시간 presence
 - 원본 오디오 업로드 또는 녹음 저장
 - 전체 회의 transcript 저장
 - 다른 참가자 음성 분석
+
+### 3.3.1 AI 엔드포인트의 현재 구현 범위 (2026-08-09 추가)
+
+`fastapi-project`(프롬프트 프로토타입)의 F-02/F-03 시스템 프롬프트를 이 백엔드로 이식했다. 다만 17절이 정의한 정식 설계와 다음이 다르다.
+
+- 엔드포인트가 `/api/v1/ai/pre-speech`, `/api/v1/ai/speech-feedback`로 독립적이다. `meeting_id`나 참가자 토큰과 연결되지 않는다.
+- 요청 body에 상대방 프로필(`CounterpartProfile`)을 클라이언트가 직접 실어 보낸다. 회의·참가자 DB에서 프로필을 조회하지 않는다.
+- 응답을 DB에 저장하지 않는다. `pre_speech_requests`, `speech_feedback` 테이블과 마이그레이션이 아직 없다.
+- 동의(`voice_analysis_consent`), 회의 상태(ACTIVE/ENDED) 확인이 없다.
+- 30초 중복 경고 억제 로직이 없다.
+- OpenAI 호출은 Chat Completions API + `response_format=json_object`를 사용한다. Responses API가 아니다.
+- 감지 기준선(F-03 flagged 판정 기준)은 프롬프트 안의 서술형 지침과 예시 3개뿐이며, 별도 golden set 검증은 없다. 현재 방침은 "애매하면 flagged=False로 관대하게"다.
+- **알려진 이슈**: 결제 수단이 없는 OpenAI 계정은 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한된다. 한도 초과 시 `AppError(502, AI_PRE_SPEECH_FAILED/AI_SPEECH_FEEDBACK_FAILED)`로 그대로 실패하며 재시도 로직이 없다. 실사용 전 결제 수단 등록이 필요하다.
+- 수동 QA 스크립트가 `tests/manual_qa/`에 있다 (`profile_variation_check.py`: 프로필 조합별 출력 비교, `latency_check.py`: 응답 시간 측정). 둘 다 실제 OpenAI API를 호출하므로 자동 테스트/CI에는 포함하지 않는다.
+
+즉 지금 구현은 "AI 두뇌(프롬프트 + OpenAI 호출 + 에러 처리)만 먼저 옮겨온 상태"이고, 17절의 회의 연동·DB 저장·동의 검증·중복 억제는 후속 작업으로 남아 있다.
 
 ---
 
@@ -249,6 +264,11 @@ http://localhost:8000/api/v1
 | 15 | POST | `/meetings/{meeting_id}/speech-feedback/analyze` | 참가자 토큰 | 후속 | F-03 final transcript 분석 |
 | 16 | GET | `/meetings/{meeting_id}/speech-feedback` | 참가자 토큰 | 후속 | 내 F-03 피드백 목록 |
 | 17 | PATCH | `/meetings/{meeting_id}/speech-feedback/{feedback_id}` | 참가자 토큰 | 후속 | 내 피드백 닫기 |
+
+12~17번은 위 스펙 경로 기준으로는 여전히 "후속"이다. 대신 아래 두 개가 3.3.1절에서 설명한 단순화된 형태로 이미 구현되어 있다.
+
+| - | POST | `/ai/pre-speech` | 없음 | 구현(단순형) | F-02 추천 생성, 회의 비연동, DB 미저장 |
+| - | POST | `/ai/speech-feedback` | 없음 | 구현(단순형) | F-03 위험 판정, 회의 비연동, DB 미저장 |
 
 Swagger:
 
@@ -1458,7 +1478,11 @@ git diff -- .gitignore .env.example
 - [x] 가짜 인식기를 사용한 Web Speech 자동 테스트
 - [ ] 실제 Chrome 마이크와 Daily 동시 사용 수동 확인
 - [ ] 정식 React 프론트
-- [ ] F-02 OpenAI 추천
-- [ ] F-03 final transcript API·OpenAI 경고
+- [x] F-02 OpenAI 추천 (단순형 — `/ai/pre-speech`, 회의 비연동, 3.3.1 참고)
+- [x] F-03 final transcript API·OpenAI 경고 (단순형 — `/ai/speech-feedback`, 회의 비연동, 3.3.1 참고)
+- [ ] AI 요청 rate limit/재시도 정책
+- [ ] `pre_speech_requests`/`speech_feedback` DB migration과 저장
+- [ ] AI 엔드포인트 참가자 토큰 인증 및 회의 맥락 연동
+- [ ] 30초 중복 경고 억제
 
-다음 스프린트는 AI DB migration과 `OpenAIService` 기반 F-02/F-03 구현을 별도 기능 단위로 시작한다.
+다음 스프린트는 AI DB migration과 위 회의 연동 항목을 별도 기능 단위로 진행한다.
