@@ -137,6 +137,10 @@ class MeetingCreateRequest(ApiModel):
     voice_analysis_consent: bool
 
 
+class VoiceAnalysisToggleRequest(ApiModel):
+    voice_analysis_enabled: bool
+
+
 class ParticipantJoinRequest(ApiModel):
     profile: ProfileInput
     profile_sharing_consent: Literal[True]

@@ -102,6 +102,43 @@ ALLOWED_FEEDBACK_TYPES = {
     "고려사항 충돌",
 }
 
+# ---- participants 테이블(영어 enum) <-> 프롬프트(한국어 리터럴) 매핑 ----
+# 프롬프트는 오늘 일관성 테스트로 검증된 상태라 그대로 두고, DB에서 읽은
+# 영어 값을 프롬프트가 이해하는 한국어 값으로 변환하는 용도로만 사용한다.
+
+PROFICIENCY_TO_KOREAN = {
+    "BEGINNER": "초급",
+    "INTERMEDIATE": "중급",
+    "ADVANCED": "고급",
+}
+
+COMMUNICATION_STYLE_TO_KOREAN = {
+    "DIRECT": "직접적",
+    "INDIRECT": "완곡한",
+    "BALANCED": "균형적",
+    # 프롬프트가 아직 세분화하지 않은 두 스타일은 가장 가까운 값으로 근사한다.
+    "FACT_FOCUSED": "직접적",
+    "EMOTION_EXPRESSIVE": "완곡한",
+}
+
+FEEDBACK_TYPE_TO_RISK_TYPE = {
+    "직접적 거절": "DIRECT_REJECTION",
+    "공격적 표현": "PERSONAL_ATTACK",
+    "모호한 표현": "AMBIGUOUS_INTENT",
+    "관용어/속어": "IDIOM_OR_JOKE",
+    "고려사항 충돌": "PROFILE_CONFLICT",
+}
+
+
+def map_risk_type(feedback_type: str | None) -> str:
+    """AI가 반환한 한국어 type을 speech_feedback.risk_type 영어 enum으로 변환한다.
+
+    매핑에 없는 값은 DB CHECK 제약을 만족시키기 위해 OTHER로 처리한다.
+    """
+    if feedback_type is None:
+        return "OTHER"
+    return FEEDBACK_TYPE_TO_RISK_TYPE.get(feedback_type, "OTHER")
+
 
 def _profile_block(profile: CounterpartProfile) -> str:
     lines = [

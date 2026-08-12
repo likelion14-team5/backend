@@ -298,6 +298,15 @@ class MeetingService:
             raise
         return self.participant_profile(participant)
 
+    def set_voice_analysis(self, participant: Participant, enabled: bool) -> ParticipantProfile:
+        if enabled and not participant.voice_analysis_consent:
+            raise AppError(403, "VOICE_CONSENT_REQUIRED", "음성 분석 동의가 필요합니다.")
+        participant.voice_analysis_enabled = enabled
+        participant.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(participant)
+        return self.participant_profile(participant)
+
     def leave(self, participant: Participant) -> None:
         participant.status = ParticipantStatus.LEFT.value
         participant.left_at = datetime.now(UTC)

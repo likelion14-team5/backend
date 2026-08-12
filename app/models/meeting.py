@@ -70,3 +70,13 @@ class Meeting(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    pre_speech_requests: Mapped[list["PreSpeechRequest"]] = relationship(  # noqa: F821
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    speech_feedback: Mapped[list["SpeechFeedback"]] = relationship(  # noqa: F821
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
