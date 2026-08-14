@@ -122,14 +122,18 @@
 - 동의(`voice_analysis_consent`), 회의 상태(ACTIVE/ENDED) 확인이 없다.
 - 30초 중복 경고 억제 로직이 없다.
 - OpenAI 호출은 Chat Completions API + `response_format=json_object`를 사용한다. Responses API가 아니다.
-- 감지 기준선(F-03 flagged 판정 기준)은 프롬프트 안의 서술형 지침과 예시 3개뿐이며, 별도 golden set 파일이나 자동 회귀 테스트는 없다. 현재 방침은 "애매하면 flagged=False로 관대하게"다. `tests/manual_qa/consistency_check.py`(중급/균형적/Product Manager 프로필 고정, 문장당 10회 반복)로 확인한 4개 경계 문장은 모두 10/10 안정적이다 (2026-08-14 기준):
-  - `"That schedule is impossible."` → flagged=true, type=직접적 거절
-  - `"Let's table this for now."` → flagged=true, type=관용어/속어
-  - `"Honestly, that idea doesn't make sense."` → flagged=true, type=직접적 거절
-  - `"Could you share the file when you get a chance?"` → flagged=false
-  이 4개 외의 문장(예: 정중한 요청·애매한 비판의 다른 변형)은 아직 확인하지 않았다.
+- 감지 기준선(F-03 flagged 판정 기준)은 프롬프트 안의 서술형 지침과 예시 3개뿐이며, 별도 golden set 파일이나 자동 회귀 테스트는 없다. 현재 방침은 "애매하면 flagged=False로 관대하게"다. `tests/manual_qa/consistency_check.py`(중급/균형적/Product Manager 프로필 고정, 문장당 10회 반복)로 확인한 결과 (2026-08-14 기준, 5개 타입 중 5개 모두 최소 1문장씩 확인):
+  - `"That schedule is impossible."` → 10/10 flagged=true, type=직접적 거절 (안정)
+  - `"Let's table this for now."` → 10/10 flagged=true, type=관용어/속어 (안정)
+  - `"Honestly, that idea doesn't make sense."` → 10/10 flagged=true, type=직접적 거절 (안정)
+  - `"Could you share the file when you get a chance?"` → 10/10 flagged=false (안정)
+  - `"You clearly didn't think this through at all."` → 4/4 flagged=true, type=공격적 표현 (안정)
+  - `"Someone should probably take care of that at some point."` (모호한 표현 의도) → 4/4 flagged=false — **이 문장으로는 모호한 표현 유형을 재현하지 못함, 다른 예문으로 재검증 필요**
+  - `"Our budget is fixed at exactly $10,000, no negotiation."` (상대 프로필에 "예산 숫자 직접 언급 금지" 고려사항 설정) → 4/4 flagged=true이지만 **type이 직접적 거절/고려사항 충돌 사이에서 오락가락함(2:2)** — 이 경계 케이스는 감지 기준선이 불안정한 것으로 확인됨, 프롬프트 튜닝 후보
+  이 7개 문장 외의 변형(정중한 요청, 다른 표현의 모호한 표현·고려사항 충돌 등)은 아직 확인하지 않았다.
+- **응답 속도**: `tests/manual_qa/latency_check.py`로 실측 (2026-08-14, 5회 반복): F-02 평균 1.97s(최소 1.10s/최대 3.58s), F-03 평균 1.61s(최소 1.19s/최대 2.41s). 둘 다 평균 2초 안팎이며, 최대치는 3초를 넘는 경우도 있었다.
 - **알려진 이슈**: 결제 수단이 없는 OpenAI 계정은 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한된다. 한도 초과 시 `AppError(502, AI_PRE_SPEECH_FAILED/AI_SPEECH_FEEDBACK_FAILED)`로 그대로 실패하며 재시도 로직이 없다. 실사용 전 결제 수단 등록이 필요하다.
-- 수동 QA 스크립트가 `tests/manual_qa/`에 있다 (`profile_variation_check.py`: 프로필 조합별 출력 비교, `latency_check.py`: 응답 시간 측정). 둘 다 실제 OpenAI API를 호출하므로 자동 테스트/CI에는 포함하지 않는다.
+- 수동 QA 스크립트가 `tests/manual_qa/`에 있다 (`profile_variation_check.py`: 프로필 조합별 출력 비교, `latency_check.py`: 응답 시간 측정, `consistency_check.py`: 반복 호출 판정 안정성 확인). 모두 실제 OpenAI API를 호출하므로 자동 테스트/CI에는 포함하지 않는다.
 
 즉 지금 구현은 "AI 두뇌(프롬프트 + OpenAI 호출 + 에러 처리)만 먼저 옮겨온 상태"이고, 17절의 회의 연동·DB 저장·동의 검증·중복 억제는 후속 작업으로 남아 있다.
 
