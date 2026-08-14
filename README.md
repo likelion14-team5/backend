@@ -1,6 +1,6 @@
 # Global Meeting Backend
 
-공유 링크로 2~4명이 프로필을 입력하고 Daily private room에 입장하는 화상회의 MVP 백엔드입니다. 회의·초대·참가자 프로필·Daily 미디어 세션·퇴장·종료에 더해 F-02/F-03 AI 엔드포인트(`/ai/pre-speech`, `/ai/speech-feedback`)가 단순 구현 형태로 포함되어 있습니다. 회의 연동, DB 저장, STT API는 아직 없습니다. 자세한 범위는 `docs/BACKEND_HANDOFF.md` 3.3.1절을 참고합니다.
+공유 링크로 2~4명이 프로필을 입력하고 Daily private room에 입장하는 화상회의 MVP 백엔드입니다. 회의·초대·참가자 프로필·Daily 미디어 세션·퇴장·종료에 더해 F-02(발언 전 추천)/F-03(발언 후 피드백) AI 엔드포인트가 참가자 토큰 인증, 회의 맥락 연동, DB 저장까지 포함된 형태로 구현되어 있습니다. STT API(음성→텍스트 자동 전송)는 아직 없습니다. 자세한 범위는 `docs/BACKEND_HANDOFF.md` 3.3.1절을 참고합니다.
 
 ## 기술 구성
 
@@ -77,8 +77,13 @@ Daily API 키, 참가자 원문 토큰, Daily meeting token을 프론트 번들�
 | PATCH | `/api/v1/meetings/{meeting_id}/participants/me/profile` | 내 프로필 수정 |
 | POST | `/api/v1/meetings/{meeting_id}/leave` | 참가자 퇴장 |
 | POST | `/api/v1/meetings/{meeting_id}/end` | HOST 회의 종료 및 세션 개인정보 삭제 |
-| POST | `/api/v1/ai/pre-speech` | F-02 한국어 문장을 상대방 프로필에 맞는 영어 표현으로 변환 (회의 비연동, 단순형) |
-| POST | `/api/v1/ai/speech-feedback` | F-03 영어 발언의 오해·마찰 가능성 점검 (회의 비연동, 단순형) |
+| PATCH | `/api/v1/meetings/{meeting_id}/participants/me/voice-analysis` | F-03 음성 분석 ON/OFF |
+| POST | `/api/v1/meetings/{meeting_id}/pre-speech` | F-02 한국어 문장을 상대방 프로필에 맞는 영어 표현으로 변환 |
+| GET | `/api/v1/meetings/{meeting_id}/pre-speech/{request_id}` | 내 F-02 결과 조회 |
+| POST | `/api/v1/meetings/{meeting_id}/pre-speech/{request_id}/regenerate` | F-02 재생성 |
+| POST | `/api/v1/meetings/{meeting_id}/speech-feedback/analyze` | F-03 영어 발언의 오해·마찰 가능성 점검 |
+| GET | `/api/v1/meetings/{meeting_id}/speech-feedback` | 내 F-03 피드백 목록 |
+| PATCH | `/api/v1/meetings/{meeting_id}/speech-feedback/{feedback_id}` | 내 피드백 닫기 |
 
 성공 단건은 `{"data": ...}`, 목록은 `{"data": [], "meta": {"count": ...}}`, 실패는 `{"error": {...}, "request_id": "uuid"}` 형식입니다. 퇴장과 종료 성공은 body 없는 `204 No Content`입니다.
 

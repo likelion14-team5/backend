@@ -161,35 +161,18 @@
                 <h3>AI 확인 (임시)</h3>
               </div>
               <p class="speech-note">
-                정식 프론트 연동 전 확인용입니다. 회의와 연동되지 않고
-                /ai/pre-speech, /ai/speech-feedback을 직접 호출합니다.
+                회의에 연동됩니다. /meetings/{meeting_id}/pre-speech,
+                /meetings/{meeting_id}/speech-feedback/analyze를 참가자 토큰으로 호출합니다.
               </p>
-
-              <div class="grid two profile-fields">
-                <label>
-                  상대 영어 숙련도
-                  <select id="ai-proficiency">
-                    <option value="초급">초급</option>
-                    <option value="중급" selected>중급</option>
-                    <option value="고급">고급</option>
-                  </select>
-                </label>
-                <label>
-                  상대 소통 방식
-                  <select id="ai-communication-style">
-                    <option value="직접적">직접적</option>
-                    <option value="완곡한">완곡한</option>
-                    <option value="균형적" selected>균형적</option>
-                  </select>
-                </label>
-                <label class="ai-job-role">
-                  상대 직무
-                  <input id="ai-job-role" value="Product Manager" maxlength="100" />
-                </label>
-              </div>
 
               <div class="ai-subsection">
                 <h4>F-02 발언 전 추천</h4>
+                <label>
+                  대상 참가자
+                  <select id="ai-target-participant">
+                    <option value="">지정 안 함 (중립 표현)</option>
+                  </select>
+                </label>
                 <label>
                   한국어 문장
                   <textarea
@@ -199,7 +182,7 @@
                   ></textarea>
                 </label>
                 <label>
-                  회의 맥락
+                  회의 맥락 (선택)
                   <input id="ai-meeting-context" value="일정 조율 회의" maxlength="200" />
                 </label>
                 <button id="ai-pre-speech-btn" type="button">영어 표현 추천 받기</button>
@@ -210,6 +193,7 @@
                 <h4>F-03 발언 후 피드백</h4>
                 <p class="speech-note">
                   왼쪽 "음성 → 텍스트"에서 English로 말해 확정 문장을 만든 뒤 눌러주세요.
+                  대상은 같은 회의에서 가장 먼저 입장한 다른 참가자로 서버가 자동 지정합니다.
                 </p>
                 <button id="ai-speech-feedback-btn" type="button">최근 영어 발언 검사</button>
                 <div id="ai-speech-feedback-result" class="ai-result hidden"></div>

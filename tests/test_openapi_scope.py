@@ -22,11 +22,6 @@ MEETING_SCOPE_OPERATIONS = {
     "/meetings/{meeting_id}/speech-feedback/{feedback_id}": {"patch": "dismissSpeechFeedback"},
 }
 
-AI_SCOPE_OPERATIONS = {
-    "/ai/pre-speech": {"post": "generatePreSpeech"},
-    "/ai/speech-feedback": {"post": "generateSpeechFeedback"},
-}
-
 
 def test_implemented_operations_match_supplied_contract() -> None:
     generated = app.openapi()
@@ -45,11 +40,8 @@ def test_implemented_operations_match_supplied_contract() -> None:
     }
 
 
-def test_ai_operations_match_current_direct_scope() -> None:
-    generated = app.openapi()
+def test_standalone_ai_endpoints_removed() -> None:
+    generated_paths = set(app.openapi()["paths"])
 
-    for path, methods in AI_SCOPE_OPERATIONS.items():
-        generated_path = f"/api/v1{path}"
-        assert generated_path in generated["paths"]
-        for method, operation_id in methods.items():
-            assert generated["paths"][generated_path][method]["operationId"] == operation_id
+    assert "/api/v1/ai/pre-speech" not in generated_paths
+    assert "/api/v1/ai/speech-feedback" not in generated_paths
