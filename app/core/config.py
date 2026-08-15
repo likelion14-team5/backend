@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-4o-mini"
     openai_request_timeout_seconds: float = Field(default=8.0, gt=0, le=30)
+    openai_max_retries: int = Field(default=3, ge=0, le=10)
     sql_echo: bool = False
 
     @field_validator("daily_api_base_url")

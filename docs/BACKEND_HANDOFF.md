@@ -102,8 +102,6 @@
 - 정식 React에서의 SpeechRecognition 연동
 - Daily 마이크 mute 상태와 SpeechRecognition 자동 동기화
 - final transcript의 실시간 자동 전송 (`.local-video-check` 임시 프론트는 F-02/F-03 AI 엔드포인트를 호출하지만, `webspeech-final-transcript` 이벤트가 자동으로 호출을 트리거하지 않고 버튼을 눌러야 함 — 정식 프론트에서 자동화 필요)
-- F-02/F-03 결과 조회·재생성·목록·닫기 (`/meetings/{meeting_id}/pre-speech/{request_id}` 등 6절 표 13, 14, 16, 17번)
-- AI 요청 rate limit 정책 (timeout은 구현됨, rate limit 초과 시 재시도 로직은 없음 — 3.3.1 참고)
 - 정식 React 프론트엔드
 - WebSocket/SSE 기반 실시간 presence
 - 원본 오디오 업로드 또는 녹음 저장
@@ -117,7 +115,6 @@
 **17절이 정의한 정식 설계와 다른 점:**
 
 - OpenAI 호출은 Chat Completions API + `response_format=json_object`를 사용한다. 17.1절이 권장한 Responses API + Structured Output이 아니다.
-- rate limit 초과 시 재시도 로직이 없다 (`AppError(502)`로 바로 실패).
 
 **감지 기준선 (F-03 flagged 판정):** 프롬프트 안의 서술형 지침과 예시 3개뿐이고, 자동 회귀 테스트로 검증하는 golden set 파일은 없다. 방침은 "애매하면 flagged=False로 관대하게". `tests/manual_qa/consistency_check.py`(중급/균형적/Product Manager 프로필 고정, 문장당 반복 호출)로 5개 위험 유형을 각각 최소 1문장씩 확인했다 (2026-08-14):
 
@@ -137,7 +134,7 @@
 
 **OpenAI 계정 rate limit 이슈 (2026-08-15 해결):** `.env`의 `OPENAI_API_KEY`가 실제로는 조직(Tier 1, 결제 완료)이 아니라 다른 계정 소속 키라서 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한되고 있었다. 조직 대시보드(Settings → Limits)에는 "Tier 1"로 표시돼 혼동이 있었는데, 실제 원인은 `.env`의 키 자체가 그 조직 소속이 아니었던 것이었다. 조직 소속 키를 새로 발급해서 `.env`에 반영 — 하루 10,000건(TPM 200,000)으로 확인됨. 모델 문제가 아니었다 (`gpt-5.4-mini`로도 동일하게 50건 제한이 걸려 있었음, 키를 바꾸자 바로 해결).
 
-한도 초과 시 재시도 없이 바로 502 실패하는 부분(rate limit 재시도 로직 자체가 없는 것)은 여전히 남아 있다 (3.3절 참고) — 다만 하루 한도가 200배 늘어서 실사용 중 마주칠 가능성은 크게 낮아졌다.
+**Rate limit 재시도 (2026-08-15 추가):** `AiService`가 만드는 `OpenAI` 클라이언트에 `max_retries`(환경변수 `OPENAI_MAX_RETRIES`, 기본값 3)를 명시적으로 지정한다. 429(rate limit)·5xx·연결 오류는 OpenAI SDK가 지수 백오프로 자동 재시도하고, 재시도를 다 써도 실패하면 그때 `AppError(502)`로 변환한다.
 
 **수동 QA 스크립트** (`tests/manual_qa/`, 실제 OpenAI를 호출해 자동 테스트/CI 미포함):
 - `profile_variation_check.py` — 프로필 조합별 출력 비교
@@ -1209,14 +1206,14 @@ OpenAI 공식 참고:
 - timeout과 sanitized error ✅
 - ~~FakeOpenAIService 테스트 대역~~ → 대신 `FakeAiService`(더 상위 레이어)로 테스트 대역 처리
 
-### 단계 D: F-02 API — 🟡 6/7 완료
+### 단계 D: F-02 API — ✅ 완료
 
 - 생성 ✅
 - 결과 조회 ✅
 - 재생성 ✅
 - 같은 회의 대상 검증 ✅
 - 자기 자신 대상 제한 ✅
-- rate limit ❌ 미구현 (3.3절 참고)
+- rate limit ✅ (OpenAI SDK `max_retries`, 3.3.1절)
 - 성공 결과만 저장 ✅
 
 ### 단계 E: F-03 API — ✅ 완료
@@ -1480,9 +1477,9 @@ git diff -- .gitignore .env.example
 - **구성**: FastAPI, SQLAlchemy, PostgreSQL, Daily REST API, OpenAI API로 이루어진 모듈형 모놀리스. 영상·음성 전달은 Daily가 담당하고 FastAPI는 원본 미디어를 받지 않는다.
 - **화상회의**: 회의·프로필·참가자 토큰·Daily 입장 token·종료·개인정보 삭제 API 10개, `meetings`/`participants` 테이블. 참가자 목록은 요약 프로필만, 상세 프로필은 별도 API로 전체 공개 프로필을 제공한다.
 - **F-02/F-03 AI**: 회의·참가자 연동 API 7개(6절 표 11~17번), `pre_speech_requests`/`speech_feedback` 테이블(`20260812_0002` migration). 참가자 토큰과 동의(`voice_analysis_consent`/`voice_analysis_enabled`)를 확인한 뒤 `target_participant_id`로 같은 회의 참가자 프로필을 조회해 AiService(OpenAI Chat Completions)를 호출한다. 위험이 없는 문장은 저장하지 않고, 위험이 있을 때만 발화한 본인 기준으로 저장한다(상대방 데이터는 저장하지 않음). 30초 내 동일 문장·유형 재감지는 새로 저장하지 않고 `suppressed_duplicate`로 표시한다. 회의 종료 시 참가자와 함께 FK cascade로 AI 데이터도 삭제된다.
-- **검증**: PostgreSQL 자동 테스트 30개, 실제 Daily 호스트·멤버 연결, 실제 OpenAI 호출까지 확인.
+- **검증**: PostgreSQL 자동 테스트 32개, 실제 Daily 호스트·멤버 연결, 실제 OpenAI 호출까지 확인.
 - **Web Speech**: `ko-KR`/`en-US` 지원, interim/final 분리, 최근 final 3개만 탭 메모리 보관. final 확정 시 `webspeech-final-transcript` 이벤트로 transcript/source/confidence/language를 전달하지만, 이 이벤트가 AI 엔드포인트 호출을 자동으로 트리거하지는 않는다 (`.local-video-check` 임시 프론트는 버튼 클릭으로 수동 호출).
-- **남은 일**: AI 요청 rate limit/재시도 정책, 정식 React 프론트 연동, F-02/F-03 이벤트 자동 트리거.
+- **남은 일**: 정식 React 프론트 연동, F-02/F-03 이벤트 자동 트리거, 톤(완곡한/균형적) 프롬프트 튜닝.
 
 ---
 
@@ -1501,7 +1498,7 @@ git diff -- .gitignore .env.example
 - [x] 참가자 목록·상세 프로필·프로필 수정
 - [x] 일반 참가자 나가기
 - [x] 호스트 종료와 참가자 개인정보 삭제
-- [x] 자동 테스트 30개 통과 (2026-08-14 기준)
+- [x] 자동 테스트 32개 통과 (2026-08-15 기준)
 - [x] 실제 Daily 연결 및 종료 확인
 - [x] 로컬 임시 프론트 확인
 - [x] 한국어·영어 Web Speech 컨트롤러와 final 이벤트 경계
@@ -1512,6 +1509,6 @@ git diff -- .gitignore .env.example
 - [x] 참가자 토큰 인증 및 회의 맥락 연동
 - [x] `pre_speech_requests`/`speech_feedback` DB migration과 저장 (10.3절)
 - [x] 30초 중복 경고 억제
-- [ ] AI 요청 rate limit/재시도 정책
+- [x] AI 요청 rate limit 재시도 정책 (`OPENAI_MAX_RETRIES`, 2026-08-15 완료)
 
-남은 건 AI 요청 rate limit/재시도 정책과 정식 React 프론트, 실제 Chrome 마이크 수동 확인이다.
+남은 건 정식 React 프론트와 실제 Chrome 마이크 수동 확인이다.

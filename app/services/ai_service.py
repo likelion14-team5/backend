@@ -218,6 +218,8 @@ class AiService:
             self._client = OpenAI(
                 api_key=api_key,
                 timeout=self.settings.openai_request_timeout_seconds,
+                # 429(rate limit)·5xx·연결 오류에 대해 SDK가 지수 백오프로 재시도한다.
+                max_retries=self.settings.openai_max_retries,
             )
         return self._client
 

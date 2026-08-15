@@ -49,6 +49,7 @@ FastAPI `8000`과 테스트 프론트 `5173` 두 프로세스가 모두 실행 �
 | `DAILY_TOKEN_TTL_MINUTES` | 참가자별 Daily token 만료 시간 |
 | `OPENAI_API_KEY` | F-02/F-03 AI 엔드포인트에서 사용하는 OpenAI API 키 |
 | `OPENAI_MODEL` | 사용할 OpenAI 모델 (기본값 `gpt-4o-mini`) |
+| `OPENAI_MAX_RETRIES` | rate limit(429)·5xx·연결 오류 시 SDK 자동 재시도 횟수 (기본값 `3`) |
 
 ## 프론트엔드 연결 순서
 
