@@ -3,12 +3,14 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 
-def profile(name: str, *, timezone: str | None = "Asia/Seoul") -> dict[str, Any]:
+def profile(
+    name: str, *, timezone: str | None = "Asia/Seoul", job_title: str = "Product Manager"
+) -> dict[str, Any]:
     return {
         "display_name": name,
         "country_code": "KR",
         "organization": "Demo Labs",
-        "job_title": "Product Manager",
+        "job_title": job_title,
         "languages": ["Korean", "English"],
         "english_proficiency": "INTERMEDIATE",
         "communication_style": "BALANCED",

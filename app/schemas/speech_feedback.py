@@ -32,6 +32,13 @@ class SpeechFeedbackAnalyzeRequest(ApiModel):
     stt_confidence: float | None = Field(default=None, ge=0, le=1)
     stt_source: Literal["WEB_SPEECH"] = "WEB_SPEECH"
     recent_context: RecentContextText | None = None
+    target_participant_id: UUID | None = Field(
+        default=None,
+        description=(
+            "분석 기준으로 삼을 대상 참가자. 지정하지 않으면 같은 회의에서 "
+            "가장 먼저 입장한 다른 참가자를 사용한다."
+        ),
+    )
 
 
 class SpeechFeedbackDetail(ApiModel):

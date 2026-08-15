@@ -45,27 +45,48 @@ class SpeechFeedbackService:
         self.db = db
         self.ai = ai
 
-    def _counterpart_profile(self, meeting_id: UUID, participant_id: UUID) -> CounterpartProfile:
-        other = self.db.scalar(
+    def _resolve_target(
+        self, meeting_id: UUID, requester_id: UUID, target_participant_id: UUID | None
+    ) -> Participant | None:
+        if target_participant_id is not None:
+            if target_participant_id == requester_id:
+                raise AppError(400, "TARGET_NOT_IN_MEETING", "본인을 대상으로 선택할 수 없습니다.")
+            target = self.db.scalar(
+                select(Participant).where(
+                    Participant.id == target_participant_id,
+                    Participant.meeting_id == meeting_id,
+                    Participant.status == ParticipantStatus.JOINED.value,
+                )
+            )
+            if target is None:
+                raise AppError(
+                    400, "TARGET_NOT_IN_MEETING", "같은 회의의 참가자만 선택할 수 있습니다."
+                )
+            return target
+        # 대상을 지정하지 않으면 같은 회의에서 가장 먼저 입장한 다른 참가자를 사용한다 (기존 동작).
+        return self.db.scalar(
             select(Participant)
             .where(
                 Participant.meeting_id == meeting_id,
-                Participant.id != participant_id,
+                Participant.id != requester_id,
                 Participant.status == ParticipantStatus.JOINED.value,
             )
             .order_by(Participant.joined_at, Participant.id)
         )
-        if other is None:
+
+    @staticmethod
+    def _counterpart_profile(target: Participant | None) -> CounterpartProfile:
+        if target is None:
             return CounterpartProfile(
                 proficiency="중급",
                 communication_style="균형적",
                 job_role=NEUTRAL_JOB_ROLE,
             )
         return CounterpartProfile(
-            proficiency=PROFICIENCY_TO_KOREAN[other.english_proficiency],
-            communication_style=COMMUNICATION_STYLE_TO_KOREAN[other.communication_style],
-            job_role=other.job_title,
-            additional_considerations=other.additional_considerations,
+            proficiency=PROFICIENCY_TO_KOREAN[target.english_proficiency],
+            communication_style=COMMUNICATION_STYLE_TO_KOREAN[target.communication_style],
+            job_role=target.job_title,
+            additional_considerations=target.additional_considerations,
         )
 
     @staticmethod
@@ -105,11 +126,12 @@ class SpeechFeedbackService:
                 403, "VOICE_CONSENT_REQUIRED", "음성 분석 동의 또는 활성화가 필요합니다."
             )
 
+        target = self._resolve_target(meeting_id, participant.id, request.target_participant_id)
         ai_result = self.ai.generate_speech_feedback(
             AiSpeechFeedbackRequest(
                 english_text=request.transcript,
                 recent_messages=[request.recent_context] if request.recent_context else [],
-                counterpart_profile=self._counterpart_profile(meeting_id, participant.id),
+                counterpart_profile=self._counterpart_profile(target),
             )
         )
         if not ai_result.flagged or not ai_result.alternative:

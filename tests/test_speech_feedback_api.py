@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.speech_feedback import SpeechFeedback
 from app.schemas.ai import SpeechFeedbackResult
 from tests.conftest import FakeAiService
-from tests.helpers import create_meeting, join_meeting, token_header
+from tests.helpers import create_meeting, join_meeting, profile, token_header
 
 
 def _row_count(db: Session) -> int:
@@ -83,6 +83,103 @@ def test_analyze_requires_consent(client: TestClient) -> None:
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "VOICE_CONSENT_REQUIRED"
+
+
+def test_analyze_uses_specified_target_over_auto_pick(
+    client: TestClient, fake_ai: FakeAiService
+) -> None:
+    fake_ai.speech_feedback_result = FLAGGED_RESULT
+    created = create_meeting(client, host_name="Jiwon")  # 자동 선택 시 host가 먼저 선택됨
+    meeting_id = created["meeting"]["id"]
+
+    casey_response = client.post(
+        f"/api/v1/meetings/{meeting_id}/participants",
+        json={
+            "profile": profile("Casey", job_title="Data Analyst"),
+            "profile_sharing_consent": True,
+            "voice_analysis_consent": True,
+        },
+    )
+    assert casey_response.status_code == 201, casey_response.text
+    casey = casey_response.json()["data"]
+    alex = join_meeting(client, meeting_id, "Alex")
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting_id}/speech-feedback/analyze",
+        json={
+            "transcript": "That schedule is impossible.",
+            "target_participant_id": casey["participant"]["id"],
+        },
+        headers=token_header(alex["participant_token"]),
+    )
+
+    assert response.status_code == 201, response.text
+    call = fake_ai.speech_feedback_calls[-1]
+    assert call.counterpart_profile.job_role == "Data Analyst"
+
+
+def test_analyze_falls_back_to_auto_pick_without_target(
+    client: TestClient, fake_ai: FakeAiService
+) -> None:
+    fake_ai.speech_feedback_result = FLAGGED_RESULT
+    created = create_meeting(client, host_name="Jiwon")
+    meeting_id = created["meeting"]["id"]
+    client.post(
+        f"/api/v1/meetings/{meeting_id}/participants",
+        json={
+            "profile": profile("Casey", job_title="Data Analyst"),
+            "profile_sharing_consent": True,
+            "voice_analysis_consent": True,
+        },
+    )
+    member = join_meeting(client, meeting_id, "Alex")
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting_id}/speech-feedback/analyze",
+        json={"transcript": "That schedule is impossible."},
+        headers=token_header(member["participant_token"]),
+    )
+
+    assert response.status_code == 201, response.text
+    call = fake_ai.speech_feedback_calls[-1]
+    # target_participant_id 미지정 시 가장 먼저 입장한 다른 참가자(host)를 사용한다.
+    assert call.counterpart_profile.job_role == "Product Manager"
+
+
+def test_analyze_blocks_self_target(client: TestClient) -> None:
+    created = create_meeting(client)
+    meeting_id = created["meeting"]["id"]
+    member = join_meeting(client, meeting_id, "Alex")
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting_id}/speech-feedback/analyze",
+        json={
+            "transcript": "That schedule is impossible.",
+            "target_participant_id": member["participant"]["id"],
+        },
+        headers=token_header(member["participant_token"]),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
+
+
+def test_analyze_blocks_target_from_other_meeting(client: TestClient) -> None:
+    first = create_meeting(client, host_name="First")
+    second = create_meeting(client, host_name="Second")
+    member = join_meeting(client, first["meeting"]["id"], "Alex")
+
+    response = client.post(
+        f"/api/v1/meetings/{first['meeting']['id']}/speech-feedback/analyze",
+        json={
+            "transcript": "That schedule is impossible.",
+            "target_participant_id": second["participant"]["id"],
+        },
+        headers=token_header(member["participant_token"]),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
 
 
 def test_analyze_duplicate_suppressed_within_30s(

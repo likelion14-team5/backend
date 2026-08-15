@@ -263,6 +263,7 @@ elements.aiSpeechFeedbackBtn.addEventListener("click", async () => {
         stt_confidence: latestEnglish.stt_confidence ?? null,
         stt_source: latestEnglish.stt_source || "WEB_SPEECH",
         recent_context: recentContext || null,
+        target_participant_id: aiTargetParticipantId(),
       }),
     });
     const result = response.data;
@@ -397,7 +398,7 @@ function updateAiTargetOptions(participants) {
   const previous = select.value;
   const others = participants.filter((participant) => participant.id !== state.participantId);
   select.replaceChildren(
-    new Option("지정 안 함 (중립 표현)", ""),
+    new Option("지정 안 함", ""),
     ...others.map((participant) => new Option(`${participant.display_name} (${participant.job_title})`, participant.id)),
   );
   if (others.some((participant) => participant.id === previous)) {

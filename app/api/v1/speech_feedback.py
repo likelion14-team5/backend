@@ -36,7 +36,7 @@ def error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     status_code=status.HTTP_201_CREATED,
     operation_id="analyzeSpeechFeedback",
     summary="F-03 final transcript 분석",
-    responses=error_responses(401, 403, 404, 409, 422, 502),
+    responses=error_responses(400, 401, 403, 404, 409, 422, 502),
 )
 def analyze_speech_feedback(
     request: SpeechFeedbackAnalyzeRequest,
