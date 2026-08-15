@@ -94,39 +94,67 @@
 - `ko-KR`·`en-US` 선택형 Web Speech 음성→텍스트 컨트롤러
 - interim/final transcript 분리 및 최근 final 3개 탭 메모리 표시
 - AI 담당자가 연결할 `webspeech-final-transcript` 브라우저 이벤트
-- F-02/F-03 AI 엔드포인트 (`POST /api/v1/ai/pre-speech`, `POST /api/v1/ai/speech-feedback`) — **단, 아래 3.3.1의 단순화된 형태**
+- F-02/F-03 AI 엔드포인트 (`POST /api/v1/meetings/{meeting_id}/pre-speech`, `POST .../speech-feedback/analyze` 등, 6절 표 11~17번) — 참가자 토큰 인증, 회의 맥락 연동, `pre_speech_requests`/`speech_feedback` DB 저장, F-03 30초 중복 경고 억제(16.6절)까지 포함
 
 ### 3.3 아직 구현하지 않은 기능
 
 - 회원가입, 로그인, JWT, refresh token
 - 정식 React에서의 SpeechRecognition 연동
 - Daily 마이크 mute 상태와 SpeechRecognition 자동 동기화
-- final transcript의 FastAPI 전송 (프론트가 아직 AI 엔드포인트를 호출하지 않음)
-- 참가자 토큰 인증이 걸린 회의 범위 AI 엔드포인트 (`/meetings/{meeting_id}/pre-speech` 등 6절 표의 12~17번 스펙 경로)
-- AI 요청 rate limit 정책 (timeout은 구현됨, rate limit 대응은 없음 — 3.3.1 참고)
-- `pre_speech_requests` 테이블, `speech_feedback` 테이블 (DB 저장 없음, 매 요청이 stateless)
-- 30초 중복 경고 억제 (16.6절)
+- final transcript의 실시간 자동 전송 (`.local-video-check` 임시 프론트는 F-02/F-03 AI 엔드포인트를 호출하지만, `webspeech-final-transcript` 이벤트가 자동으로 호출을 트리거하지 않고 버튼을 눌러야 함 — 정식 프론트에서 자동화 필요)
 - 정식 React 프론트엔드
 - WebSocket/SSE 기반 실시간 presence
 - 원본 오디오 업로드 또는 녹음 저장
 - 전체 회의 transcript 저장
 - 다른 참가자 음성 분석
 
-### 3.3.1 AI 엔드포인트의 현재 구현 범위 (2026-08-09 추가)
+### 3.3.1 AI 구현 세부사항과 알려진 한계 (2026-08-09 추가, 2026-08-14 갱신)
 
-`fastapi-project`(프롬프트 프로토타입)의 F-02/F-03 시스템 프롬프트를 이 백엔드로 이식했다. 다만 17절이 정의한 정식 설계와 다음이 다르다.
+`fastapi-project`(프롬프트 프로토타입)의 F-02/F-03 시스템 프롬프트를 이 백엔드로 이식했다. 회의 비연동 단순형(`/ai/pre-speech` 등)은 2026-08-14에 삭제했고, 지금은 **회의 연동형 하나만** 있다 (6절 표 11~17번). `AiService`(OpenAI 호출)와 시스템 프롬프트는 두 세트가 있었을 때부터 공유해온 걸 그대로 쓴다.
 
-- 엔드포인트가 `/api/v1/ai/pre-speech`, `/api/v1/ai/speech-feedback`로 독립적이다. `meeting_id`나 참가자 토큰과 연결되지 않는다.
-- 요청 body에 상대방 프로필(`CounterpartProfile`)을 클라이언트가 직접 실어 보낸다. 회의·참가자 DB에서 프로필을 조회하지 않는다.
-- 응답을 DB에 저장하지 않는다. `pre_speech_requests`, `speech_feedback` 테이블과 마이그레이션이 아직 없다.
-- 동의(`voice_analysis_consent`), 회의 상태(ACTIVE/ENDED) 확인이 없다.
-- 30초 중복 경고 억제 로직이 없다.
-- OpenAI 호출은 Chat Completions API + `response_format=json_object`를 사용한다. Responses API가 아니다.
-- 감지 기준선(F-03 flagged 판정 기준)은 프롬프트 안의 서술형 지침과 예시 3개뿐이며, 별도 golden set 검증은 없다. 현재 방침은 "애매하면 flagged=False로 관대하게"다.
-- **알려진 이슈**: 결제 수단이 없는 OpenAI 계정은 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한된다. 한도 초과 시 `AppError(502, AI_PRE_SPEECH_FAILED/AI_SPEECH_FEEDBACK_FAILED)`로 그대로 실패하며 재시도 로직이 없다. 실사용 전 결제 수단 등록이 필요하다.
-- 수동 QA 스크립트가 `tests/manual_qa/`에 있다 (`profile_variation_check.py`: 프로필 조합별 출력 비교, `latency_check.py`: 응답 시간 측정). 둘 다 실제 OpenAI API를 호출하므로 자동 테스트/CI에는 포함하지 않는다.
+**17절이 정의한 정식 설계와 다른 점:**
 
-즉 지금 구현은 "AI 두뇌(프롬프트 + OpenAI 호출 + 에러 처리)만 먼저 옮겨온 상태"이고, 17절의 회의 연동·DB 저장·동의 검증·중복 억제는 후속 작업으로 남아 있다.
+- OpenAI 호출은 Chat Completions API + `response_format=json_object`를 사용한다. 17.1절이 권장한 Responses API + Structured Output이 아니다.
+
+**감지 기준선 (F-03 flagged 판정):** 프롬프트 안의 서술형 지침과 예시 3개뿐이고, 자동 회귀 테스트로 검증하는 golden set 파일은 없다. 방침은 "애매하면 flagged=False로 관대하게". `tests/manual_qa/consistency_check.py`(중급/균형적/Product Manager 프로필 고정, 문장당 반복 호출)로 5개 위험 유형을 각각 최소 1문장씩 확인했다 (2026-08-14):
+
+| 문장 | 반복 | 결과 |
+|---|---|---|
+| `"That schedule is impossible."` | 10/10 | flagged, 직접적 거절 — 안정 |
+| `"Let's table this for now."` | 10/10 | flagged, 관용어/속어 — 안정 |
+| `"Honestly, that idea doesn't make sense."` | 10/10 | flagged, 직접적 거절 — 안정 |
+| `"Could you share the file when you get a chance?"` | 10/10 | not flagged — 안정 |
+| `"You clearly didn't think this through at all."` | 4/4 | flagged, 공격적 표현 — 안정 |
+| `"Someone should probably take care of that at some point."` | 4/4 | not flagged — **모호한 표현 유형 재현 실패, 다른 예문 필요** |
+| `"Our budget is fixed at exactly $10,000, no negotiation."`(상대 프로필에 예산 언급 금지 고려사항 설정) | 4/4 flagged, 타입 2:2 | **직접적 거절/고려사항 충돌 사이에서 판정 불안정 — 프롬프트 튜닝 후보** |
+
+이 7개 문장 외 변형(정중한 요청 등)은 아직 확인하지 않았다.
+
+**F-02 톤 튜닝 (2026-08-15 해결):** PR#2 당시 `profile_variation_check.py`로 확인했을 때 "완곡한"과 "균형적" 소통 방식의 출력이 거의 비슷하게 나오는 문제가 있었다 (규칙이 "그 중간 톤을 사용하십시오"로만 적혀 있어 모델이 구분할 기준이 없었음). `PRE_SPEECH_SYSTEM_PROMPT` 규칙 3을 헤지(hedge) 개수 기준으로 재작성했다 — "완곡한"은 문장 앞부분에 쿠션어를 2개 이상 겹치고, "균형적"은 핵심을 단정적으로 먼저 말한 뒤 문장 끝에 정중구 한 개만 붙인다. 같은 입력(중급/Product Manager)으로 5회씩 재확인한 결과:
+- 완곡한: `"I'm concerned that this timeline might be a bit challenging for us."` / `"I was wondering if this timeline might be a bit challenging for us."`
+- 균형적: `"I think this timeline might be challenging for us, but I'm open to discussing alternatives."` (5/5 안정적으로 "but I'm open to..." 형태의 트레일링 정중구가 붙음)
+
+두 스타일이 구조적으로 명확히 구분됨을 확인했다.
+
+**communication_style 5종 매핑 (2026-08-15 해결):** PR#3의 "알려진 단순화" 항목 중 하나 — DB `communication_style`은 5종(DIRECT/INDIRECT/BALANCED/FACT_FOCUSED/EMOTION_EXPRESSIVE)인데 프롬프트는 3종만 지원해서 `FACT_FOCUSED→직접적`, `EMOTION_EXPRESSIVE→완곡한`으로 근사 매핑하고 있었다. 프롬프트 규칙 3에 두 스타일 전용 지시문과 few-shot 예시를 추가해 5종 전부 1:1로 구분한다 (사실 중심적은 근거·수치 제시, 감정 표현이 풍부한은 감정 어휘 명시). 같은 입력을 5개 스타일로 재확인한 결과 전부 구조적으로 구분됨을 확인했다.
+
+**F-03 대상 참가자 지정 (2026-08-15 해결):** PR#3의 또 다른 "알려진 단순화" 항목 — F-03은 상대방을 지정하는 필드가 없어서 항상 "같은 회의에서 가장 먼저 입장한 다른 참가자"를 상대방으로 썼다 (3인 이상 회의에서는 부정확할 수 있음). `SpeechFeedbackAnalyzeRequest`에 F-02와 동일한 `target_participant_id`(선택)를 추가했다. 지정하면 F-02와 같은 검증(자기 자신 차단, 같은 회의 소속 확인)을 거쳐 그 참가자 프로필을 쓰고, 지정하지 않으면 기존 자동 선택 동작을 그대로 유지한다 (하위 호환).
+
+**에러 코드 세분화 (2026-08-15 해결):** PR#3의 세 번째 "알려진 단순화" 항목 — target/self 검증과 동의 부족이 각각 `TARGET_NOT_IN_MEETING`/`VOICE_CONSENT_REQUIRED` 하나로 통일 처리되어 있어서, 프론트가 서로 다른 실패 상황(예: "본인 선택 불가" vs "그런 참가자 없음")을 에러 코드만으로 구분할 수 없었다. F-02/F-03 공통으로 다음처럼 분리했다.
+- `SELF_TARGET_NOT_ALLOWED` (422) — 본인을 대상으로 지정
+- `TARGET_PARTICIPANT_NOT_FOUND` (404) — 대상이 같은 회의 소속이 아니거나 존재하지 않음
+- F-03 전용: `VOICE_ANALYSIS_CONSENT_REQUIRED` (403, 동의 자체가 없음) / `VOICE_ANALYSIS_DISABLED` (403, 동의는 했지만 꺼져 있음)
+
+**응답 속도:** `tests/manual_qa/latency_check.py` 5회 반복 실측 (2026-08-14) — F-02 평균 1.97s(1.10~3.58s), F-03 평균 1.61s(1.19~2.41s).
+
+**OpenAI 계정 rate limit 이슈 (2026-08-15 해결):** `.env`의 `OPENAI_API_KEY`가 실제로는 조직(Tier 1, 결제 완료)이 아니라 다른 계정 소속 키라서 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한되고 있었다. 조직 대시보드(Settings → Limits)에는 "Tier 1"로 표시돼 혼동이 있었는데, 실제 원인은 `.env`의 키 자체가 그 조직 소속이 아니었던 것이었다. 조직 소속 키를 새로 발급해서 `.env`에 반영 — 하루 10,000건(TPM 200,000)으로 확인됨. 모델 문제가 아니었다 (`gpt-5.4-mini`로도 동일하게 50건 제한이 걸려 있었음, 키를 바꾸자 바로 해결).
+
+**Rate limit 재시도 (2026-08-15 추가):** `AiService`가 만드는 `OpenAI` 클라이언트에 `max_retries`(환경변수 `OPENAI_MAX_RETRIES`, 기본값 3)를 명시적으로 지정한다. 429(rate limit)·5xx·연결 오류는 OpenAI SDK가 지수 백오프로 자동 재시도하고, 재시도를 다 써도 실패하면 그때 `AppError(502)`로 변환한다.
+
+**수동 QA 스크립트** (`tests/manual_qa/`, 실제 OpenAI를 호출해 자동 테스트/CI 미포함):
+- `profile_variation_check.py` — 프로필 조합별 출력 비교
+- `latency_check.py` — 응답 시간 측정
+- `consistency_check.py` — 반복 호출 판정 안정성 확인
 
 ---
 
@@ -186,39 +214,57 @@ SQLAlchemy Model / 외부 서비스 Client
 backend/
 ├─ app/
 │  ├─ api/
-│  │  ├─ dependencies.py        # DB, Daily, 참가자 인증 의존성
+│  │  ├─ dependencies.py        # DB, Daily, 참가자 인증(get_participant_context) 의존성
 │  │  └─ v1/
-│  │     ├─ meetings.py         # 현재 회의·참가자 API 10개
+│  │     ├─ meetings.py         # 회의·참가자 API 10개
+│  │     ├─ pre_speech.py       # F-02 (/meetings/{id}/pre-speech 등)
+│  │     ├─ speech_feedback.py  # F-03 (/meetings/{id}/speech-feedback/analyze 등)
 │  │     └─ router.py           # v1 라우터 조립
 │  ├─ core/
-│  │  ├─ config.py              # 환경 변수
+│  │  ├─ config.py              # 환경 변수 (OPENAI_API_KEY 포함)
 │  │  └─ errors.py              # 공통 오류와 request_id
 │  ├─ db/
 │  │  ├─ base.py                # SQLAlchemy DeclarativeBase
 │  │  └─ session.py             # Engine, SessionLocal, get_db
 │  ├─ models/
 │  │  ├─ meeting.py             # meetings ORM
-│  │  └─ participant.py         # participants ORM
+│  │  ├─ participant.py         # participants ORM
+│  │  ├─ pre_speech_request.py  # pre_speech_requests ORM (F-02 결과 저장)
+│  │  └─ speech_feedback.py     # speech_feedback ORM (F-03 위험 감지 결과 저장)
 │  ├─ schemas/
 │  │  ├─ common.py              # 공통 응답 모델
-│  │  └─ meeting.py             # 회의·프로필 요청/응답 DTO
+│  │  ├─ meeting.py             # 회의·프로필 요청/응답 DTO
+│  │  ├─ ai.py                  # AiService 내부 요청/결과 타입 (PreSpeechResult 등)
+│  │  ├─ pre_speech.py          # F-02 API 요청/응답 DTO
+│  │  └─ speech_feedback.py     # F-03 API 요청/응답 DTO
 │  ├─ security/
 │  │  └─ participant_token.py   # opaque token 생성·SHA-256
 │  ├─ services/
 │  │  ├─ meeting_service.py     # 회의 비즈니스 규칙
-│  │  └─ daily_service.py       # Daily REST 연동
+│  │  ├─ daily_service.py       # Daily REST 연동
+│  │  ├─ ai_service.py          # OpenAI 호출 + 시스템 프롬프트 (F-02/F-03 공용)
+│  │  ├─ pre_speech_service.py  # F-02 저장·재생성 로직
+│  │  └─ speech_feedback_service.py  # F-03 동의 확인·저장·30초 중복 억제
 │  └─ main.py                   # FastAPI 생성, CORS, middleware
 ├─ alembic/
 │  └─ versions/
-│     └─ 20260806_0001_meetings_and_participants.py
+│     ├─ 20260806_0001_meetings_and_participants.py
+│     └─ 20260812_0002_pre_speech_and_speech_feedback.py
 ├─ tests/
-│  ├─ conftest.py               # 테스트 DB와 FakeDailyService
+│  ├─ conftest.py               # 테스트 DB, FakeDailyService, FakeAiService
+│  ├─ helpers.py                # create_meeting/join_meeting 등 테스트 헬퍼
 │  ├─ test_meeting_api.py       # 회의 전체 생명주기
 │  ├─ test_daily_service.py     # Daily 요청 계약
 │  ├─ test_openapi_scope.py     # 현재 API 범위
-│  └─ test_participant_token.py # 토큰 보안
+│  ├─ test_participant_token.py # 토큰 보안
+│  ├─ test_pre_speech_api.py    # 연동형 F-02 API
+│  ├─ test_speech_feedback_api.py  # 연동형 F-03 API
+│  └─ manual_qa/                # 실제 OpenAI를 호출하는 수동 QA 스크립트 (CI 미포함)
+│     ├─ profile_variation_check.py  # 프로필 조합별 출력 비교
+│     ├─ latency_check.py            # 응답 시간 측정
+│     └─ consistency_check.py        # 반복 호출 판정 안정성 확인
 ├─ .local-video-check/          # 저장소에 포함된 로컬 검증 프론트
-│  ├─ index.html                # 회의 생성·참가·회의 화면
+│  ├─ index.html                # 회의 생성·참가·회의 화면 (+ AI 확인 임시 패널)
 │  ├─ styles.css                # 최소 확인용 UI
 │  ├─ app.js                    # API·Daily iframe·Web Speech 연결
 │  └─ serve.py                  # SPA fallback 로컬 서버
@@ -245,30 +291,27 @@ Base URL:
 http://localhost:8000/api/v1
 ```
 
-| 번호 | Method | Path | 인증 | 상태 | 설명 |
-|---:|---|---|---|---|---|
-| 1 | POST | `/meetings` | 없음 | 구현 | Daily 방, 회의, HOST 생성 |
-| 2 | GET | `/meetings/{meeting_id}/public` | 없음 | 구현 | 입장 화면용 공개 정보 |
-| 3 | POST | `/meetings/{meeting_id}/participants` | 없음 | 구현 | 프로필 입력 후 일반 참가 |
-| 4 | GET | `/meetings/{meeting_id}` | 참가자 토큰 | 구현 | 회의 화면 초기 컨텍스트 |
-| 5 | POST | `/meetings/{meeting_id}/media-session` | 참가자 토큰 | 구현 | Daily URL·단기 token 발급 |
-| 6 | GET | `/meetings/{meeting_id}/participants` | 참가자 토큰 | 구현 | 참가자 요약 목록 |
-| 7 | GET | `/meetings/{meeting_id}/participants/{participant_id}` | 참가자 토큰 | 구현 | 참가자 전체 공개 프로필 |
-| 8 | PATCH | `/meetings/{meeting_id}/participants/me/profile` | 참가자 토큰 | 구현 | 내 프로필 수정 |
-| 9 | POST | `/meetings/{meeting_id}/leave` | 참가자 토큰 | 구현 | 현재 참가자 나가기 |
-| 10 | POST | `/meetings/{meeting_id}/end` | HOST 토큰 | 구현 | 회의 종료·개인정보 삭제 |
-| 11 | PATCH | `/meetings/{meeting_id}/participants/me/voice-analysis` | 참가자 토큰 | 후속 | F-03 ON/OFF |
-| 12 | POST | `/meetings/{meeting_id}/pre-speech` | 참가자 토큰 | 후속 | F-02 추천 생성 |
-| 13 | GET | `/meetings/{meeting_id}/pre-speech/{request_id}` | 참가자 토큰 | 후속 | 내 F-02 결과 조회 |
-| 14 | POST | `/meetings/{meeting_id}/pre-speech/{request_id}/regenerate` | 참가자 토큰 | 후속 | F-02 재생성 |
-| 15 | POST | `/meetings/{meeting_id}/speech-feedback/analyze` | 참가자 토큰 | 후속 | F-03 final transcript 분석 |
-| 16 | GET | `/meetings/{meeting_id}/speech-feedback` | 참가자 토큰 | 후속 | 내 F-03 피드백 목록 |
-| 17 | PATCH | `/meetings/{meeting_id}/speech-feedback/{feedback_id}` | 참가자 토큰 | 후속 | 내 피드백 닫기 |
+모두 구현 완료. 참가자 토큰이 필요 없는 것 3개(회의 생성, 공개 정보 조회, 참가 신청), HOST 토큰이 필요한 것 1개(종료), 나머지는 전부 참가자 토큰이 필요하다.
 
-12~17번은 위 스펙 경로 기준으로는 여전히 "후속"이다. 대신 아래 두 개가 3.3.1절에서 설명한 단순화된 형태로 이미 구현되어 있다.
-
-| - | POST | `/ai/pre-speech` | 없음 | 구현(단순형) | F-02 추천 생성, 회의 비연동, DB 미저장 |
-| - | POST | `/ai/speech-feedback` | 없음 | 구현(단순형) | F-03 위험 판정, 회의 비연동, DB 미저장 |
+| 번호 | Method | Path | 인증 | 설명 |
+|---:|---|---|---|---|
+| 1 | POST | `/meetings` | 없음 | Daily 방, 회의, HOST 생성 |
+| 2 | GET | `/meetings/{meeting_id}/public` | 없음 | 입장 화면용 공개 정보 |
+| 3 | POST | `/meetings/{meeting_id}/participants` | 없음 | 프로필 입력 후 일반 참가 |
+| 4 | GET | `/meetings/{meeting_id}` | 참가자 토큰 | 회의 화면 초기 컨텍스트 |
+| 5 | POST | `/meetings/{meeting_id}/media-session` | 참가자 토큰 | Daily URL·단기 token 발급 |
+| 6 | GET | `/meetings/{meeting_id}/participants` | 참가자 토큰 | 참가자 요약 목록 |
+| 7 | GET | `/meetings/{meeting_id}/participants/{participant_id}` | 참가자 토큰 | 참가자 전체 공개 프로필 |
+| 8 | PATCH | `/meetings/{meeting_id}/participants/me/profile` | 참가자 토큰 | 내 프로필 수정 |
+| 9 | POST | `/meetings/{meeting_id}/leave` | 참가자 토큰 | 현재 참가자 나가기 |
+| 10 | POST | `/meetings/{meeting_id}/end` | HOST 토큰 | 회의 종료·개인정보 삭제 |
+| 11 | PATCH | `/meetings/{meeting_id}/participants/me/voice-analysis` | 참가자 토큰 | F-03 ON/OFF (`setVoiceAnalysis`) |
+| 12 | POST | `/meetings/{meeting_id}/pre-speech` | 참가자 토큰 | F-02 추천 생성, 성공 시 저장 (`createPreSpeech`) |
+| 13 | GET | `/meetings/{meeting_id}/pre-speech/{request_id}` | 참가자 토큰 | 내 F-02 결과 조회 (`getPreSpeech`) |
+| 14 | POST | `/meetings/{meeting_id}/pre-speech/{request_id}/regenerate` | 참가자 토큰 | F-02 재생성, `parent_request_id` 연결 (`regeneratePreSpeech`) |
+| 15 | POST | `/meetings/{meeting_id}/speech-feedback/analyze` | 참가자 토큰 | F-03 분석, 동의 확인·위험 시 저장·30초 중복 억제 (`analyzeSpeechFeedback`) |
+| 16 | GET | `/meetings/{meeting_id}/speech-feedback` | 참가자 토큰 | 내 F-03 피드백 목록 (`listSpeechFeedback`) |
+| 17 | PATCH | `/meetings/{meeting_id}/speech-feedback/{feedback_id}` | 참가자 토큰 | 내 피드백 닫기 (`dismissSpeechFeedback`) |
 
 Swagger:
 
@@ -453,7 +496,7 @@ GET /meetings/{meeting_id}/participants/{participant_id}
 
 ### 10.1 현재 실제 생성되는 테이블
 
-현재 Alembic revision `20260806_0001`은 다음 테이블을 생성한다.
+Alembic revision `20260806_0001`이 `meetings`/`participants`를, `20260812_0002`가 `pre_speech_requests`/`speech_feedback`을 생성한다 (10.3절).
 
 #### `meetings`
 
@@ -491,9 +534,9 @@ GET /meetings/{meeting_id}/participants/{participant_id}
 - ACTIVE면 `ended_at IS NULL`
 - ENDED면 `ended_at IS NOT NULL`
 
-### 10.3 후속 AI 테이블
+### 10.3 pre_speech_requests / speech_feedback 테이블 (2026-08-14 완료)
 
-전체 DB 명세에는 다음 두 테이블도 정의돼 있지만 아직 마이그레이션하지 않았다.
+Alembic revision `20260812_0002`로 마이그레이션 완료. F-02는 성공한 결과만, F-03은 위험이 감지된 결과만 저장한다 (다른 참가자의 발언·데이터는 저장하지 않음 — 11.1절).
 
 #### `pre_speech_requests`
 
@@ -516,13 +559,7 @@ GET /meetings/{meeting_id}/participants/{participant_id}
 - VISIBLE/DISMISSED
 - 생성·닫기 시각
 
-이미 공유된 `20260806_0001` 파일을 수정하지 말고 새 revision으로 추가한다.
-
-권장 파일명:
-
-```text
-20260806_0002_add_ai_feedback_tables.py
-```
+`20260806_0001` 파일은 수정하지 않고 새 revision(`20260812_0002_pre_speech_and_speech_feedback.py`)으로 추가했다.
 
 ---
 
@@ -1167,41 +1204,41 @@ OpenAI 공식 참고:
 - Git 첫 commit 전 secret 검사
 - 현재 15개 테스트 재실행
 
-### 단계 B: AI DB migration
+### 단계 B: AI DB migration — ✅ 완료 (2026-08-14)
 
 - `PreSpeechRequest`, `SpeechFeedback` ORM 추가
-- `20260806_0002` migration 추가
+- `20260806_0002` migration 추가 → 실제 파일명은 `20260812_0002_pre_speech_and_speech_feedback.py`
 - FK cascade와 인덱스 확인
 - 개발/테스트 DB upgrade
 - downgrade 및 재-upgrade 확인
 
-### 단계 C: OpenAIService
+### 단계 C: OpenAIService — 🟡 다른 방식으로 완료
 
-- OpenAI SDK dependency 추가
-- 환경 변수 추가
-- Responses API 호출 두 함수
-- Pydantic Structured Output
-- timeout과 sanitized error
-- FakeOpenAIService 테스트 대역
+- OpenAI SDK dependency 추가 ✅
+- 환경 변수 추가 ✅
+- ~~Responses API 호출 두 함수~~ → **Chat Completions API + `response_format=json_object`**를 그대로 사용 (3.3.1절에서 이미 검증된 프롬프트를 재사용하기 위한 의도적 선택)
+- ~~Pydantic Structured Output~~ → OpenAI 응답 JSON을 수동 파싱 후 Pydantic 모델로 변환
+- timeout과 sanitized error ✅
+- ~~FakeOpenAIService 테스트 대역~~ → 대신 `FakeAiService`(더 상위 레이어)로 테스트 대역 처리
 
-### 단계 D: F-02 API
+### 단계 D: F-02 API — ✅ 완료
 
-- 생성
-- 결과 조회
-- 재생성
-- 같은 회의 대상 검증
-- 자기 자신 대상 제한
-- rate limit
-- 성공 결과만 저장
+- 생성 ✅
+- 결과 조회 ✅
+- 재생성 ✅
+- 같은 회의 대상 검증 ✅
+- 자기 자신 대상 제한 ✅
+- rate limit ✅ (OpenAI SDK `max_retries`, 3.3.1절)
+- 성공 결과만 저장 ✅
 
-### 단계 E: F-03 API
+### 단계 E: F-03 API — ✅ 완료
 
-- 분석 ON/OFF
-- final transcript 분석
-- 위험 문장만 저장
-- 30초 중복 억제
-- 내 피드백 목록
-- 피드백 닫기
+- 분석 ON/OFF ✅
+- final transcript 분석 ✅
+- 위험 문장만 저장 ✅
+- 30초 중복 억제 ✅
+- 내 피드백 목록 ✅
+- 피드백 닫기 ✅
 
 ### 단계 F: 정식 React 프론트
 
@@ -1244,40 +1281,40 @@ OpenAI 공식 참고:
 
 ### 19.1 DB와 인증
 
-- [ ] 다른 회의 토큰으로 접근 불가
-- [ ] LEFT 참가자 AI 요청 불가
-- [ ] ENDED 회의 AI 요청 불가
-- [ ] 일반 참가자 `/end` 불가
-- [ ] AI 데이터가 다른 참가자에게 노출되지 않음
+- [x] 다른 회의 토큰으로 접근 불가 (AI 라우터도 `get_participant_context` 공유 — `test_meeting_api.py::test_token_cannot_cross_meeting_boundary`로 검증된 동일 메커니즘)
+- [ ] LEFT 참가자 AI 요청 불가 (전용 테스트 없음)
+- [ ] ENDED 회의 AI 요청 불가 (전용 테스트 없음, `get_participant_context`가 공통 처리하긴 함)
+- [x] 일반 참가자 `/end` 불가 (`test_meeting_api.py`, AI 라우트와 무관하게 이미 검증됨)
+- [x] AI 데이터가 다른 참가자에게 노출되지 않음 (`test_get_pre_speech_ownership`, `test_list_returns_only_own`)
 
 ### 19.2 F-02
 
-- [ ] 대상 없음 중립 표현
-- [ ] 같은 회의 대상 프로필 반영
-- [ ] 다른 회의 target ID 차단
-- [ ] 자기 자신 target 차단
-- [ ] 재생성 parent 연결
-- [ ] OpenAI 실패 행 미저장
+- [x] 대상 없음 중립 표현 — `test_create_pre_speech_without_target_uses_neutral_profile`
+- [x] 같은 회의 대상 프로필 반영 — `test_create_pre_speech_saves_to_db`
+- [x] 다른 회의 target ID 차단 — `test_create_pre_speech_target_not_in_meeting`
+- [x] 자기 자신 target 차단 — `test_create_pre_speech_self_target_rejected`
+- [x] 재생성 parent 연결 — `test_regenerate_links_parent`
+- [x] OpenAI 실패 행 미저장 — `test_create_pre_speech_ai_failure_not_saved`
 
 ### 19.3 F-03
 
-- [ ] 동의 없음 분석 차단
-- [ ] 분석 OFF 요청 차단
-- [ ] 위험 없음 `feedback=null`
-- [ ] 위험 있음 DB 저장
-- [ ] 동일 문장 30초 중복 억제
-- [ ] 본인 피드백만 조회
-- [ ] 본인 피드백만 dismiss
-- [ ] 낮은 confidence 표시
+- [x] 동의 없음 분석 차단 — `test_analyze_requires_consent` (`VOICE_ANALYSIS_CONSENT_REQUIRED`, 2026-08-15부터 `VOICE_ANALYSIS_DISABLED`와 분리됨)
+- [x] 분석 OFF 요청 차단 — `test_analyze_requires_enabled_when_consented` (`VOICE_ANALYSIS_DISABLED`, 2026-08-15 추가)
+- [x] 위험 없음 `feedback=null` — `test_analyze_not_saved_when_no_risk`
+- [x] 위험 있음 DB 저장 — `test_analyze_saves_when_risk_detected`
+- [x] 동일 문장 30초 중복 억제 — `test_analyze_duplicate_suppressed_within_30s`
+- [x] 본인 피드백만 조회 — `test_list_returns_only_own`
+- [x] 본인 피드백만 dismiss — `test_dismiss_updates_state_and_ownership`
+- [ ] 낮은 confidence 표시 (요청 스키마에 `stt_confidence` 입력 자체가 없어 항상 null)
 
 ### 19.4 장애와 개인정보
 
-- [ ] OpenAI timeout이 Daily를 중단하지 않음
-- [ ] Daily 장애가 프로필 화면을 중단하지 않음
-- [ ] API key, token, transcript가 로그에 없음
-- [ ] 회의 종료 시 participants 삭제
-- [ ] 회의 종료 시 pre_speech_requests 삭제
-- [ ] 회의 종료 시 speech_feedback 삭제
+- [ ] OpenAI timeout이 Daily를 중단하지 않음 (전용 테스트 없음)
+- [ ] Daily 장애가 프로필 화면을 중단하지 않음 (전용 테스트 없음)
+- [ ] API key, token, transcript가 로그에 없음 (전용 테스트 없음)
+- [x] 회의 종료 시 participants 삭제 — `test_meeting_api.py::test_complete_video_meeting_backend_lifecycle`
+- [x] 회의 종료 시 pre_speech_requests 삭제 — FK `ON DELETE CASCADE`로 구조적으로 보장, 자동 테스트는 없고 라이브 서버로 수동 확인함 (PR #3 설명 참고)
+- [x] 회의 종료 시 speech_feedback 삭제 — 위와 동일
 
 ---
 
@@ -1450,9 +1487,14 @@ git diff -- .gitignore .env.example
 
 ## 24. 인수인계 요약문
 
-다음 내용을 후속 개발자에게 그대로 전달할 수 있다.
+다음 내용을 후속 개발자에게 그대로 전달할 수 있다 (2026-08-14 기준).
 
-> 현재 백엔드는 FastAPI, SQLAlchemy, PostgreSQL, Daily REST API로 구성된 모듈형 모놀리스다. 영상과 음성 전달은 Daily가 담당하며 FastAPI는 원본 미디어를 받지 않는다. FastAPI는 회의·프로필·참가자 토큰·Daily 입장 token·종료와 개인정보 삭제를 담당한다. 현재 화상회의 범위 API 10개와 meetings/participants 테이블이 구현됐고 PostgreSQL 자동 테스트 15개와 실제 Daily 호스트·멤버 연결까지 확인했다. 참가자 목록은 요약 프로필을 반환하지만 상세 프로필 API에서 전체 공개 프로필을 이미 제공한다. Web Speech 인수인계 컨트롤러는 `ko-KR`과 `en-US`를 지원하며 interim/final을 분리하고 최근 final 3개만 탭 메모리에 둔다. final 확정 시 `webspeech-final-transcript` 이벤트로 transcript, source, confidence, language를 전달한다. 이 경계까지 자동 테스트했으며 실제 Chrome 마이크와 Daily 동시 사용은 수동 확인이 남아 있다. 향후 AI 기능은 영어 final transcript만 FastAPI에 보내는 구조로 연결하고, 한국어 transcript는 F-02 의도 입력 보조로 사용할 수 있다. FastAPI는 참가자 동의와 프로필·회의 맥락을 검증한 뒤 OpenAIService를 호출한다. 위험이 없는 문장은 저장하지 않고 위험이 있을 때만 speech_feedback에 저장해 발화한 본인에게 한국어 설명과 영어 대안 표현을 반환한다. AI 실패는 Daily 화상회의와 분리하며 회의 종료 시 참가자와 모든 AI 데이터를 삭제한다. AI 구현 시 기존 migration을 수정하지 말고 0002 migration, 별도 Router/Schema/Service/Model, FakeOpenAIService 테스트를 추가한다.
+- **구성**: FastAPI, SQLAlchemy, PostgreSQL, Daily REST API, OpenAI API로 이루어진 모듈형 모놀리스. 영상·음성 전달은 Daily가 담당하고 FastAPI는 원본 미디어를 받지 않는다.
+- **화상회의**: 회의·프로필·참가자 토큰·Daily 입장 token·종료·개인정보 삭제 API 10개, `meetings`/`participants` 테이블. 참가자 목록은 요약 프로필만, 상세 프로필은 별도 API로 전체 공개 프로필을 제공한다.
+- **F-02/F-03 AI**: 회의·참가자 연동 API 7개(6절 표 11~17번), `pre_speech_requests`/`speech_feedback` 테이블(`20260812_0002` migration). 참가자 토큰과 동의(`voice_analysis_consent`/`voice_analysis_enabled`)를 확인한 뒤 `target_participant_id`로 같은 회의 참가자 프로필을 조회해 AiService(OpenAI Chat Completions)를 호출한다. 위험이 없는 문장은 저장하지 않고, 위험이 있을 때만 발화한 본인 기준으로 저장한다(상대방 데이터는 저장하지 않음). 30초 내 동일 문장·유형 재감지는 새로 저장하지 않고 `suppressed_duplicate`로 표시한다. 회의 종료 시 참가자와 함께 FK cascade로 AI 데이터도 삭제된다.
+- **검증**: PostgreSQL 자동 테스트 32개, 실제 Daily 호스트·멤버 연결, 실제 OpenAI 호출까지 확인.
+- **Web Speech**: `ko-KR`/`en-US` 지원, interim/final 분리, 최근 final 3개만 탭 메모리 보관. final 확정 시 `webspeech-final-transcript` 이벤트로 transcript/source/confidence/language를 전달하지만, 이 이벤트가 AI 엔드포인트 호출을 자동으로 트리거하지는 않는다 (`.local-video-check` 임시 프론트는 버튼 클릭으로 수동 호출).
+- **남은 일**: 정식 React 프론트 연동, F-02/F-03 이벤트 자동 트리거.
 
 ---
 
@@ -1471,18 +1513,17 @@ git diff -- .gitignore .env.example
 - [x] 참가자 목록·상세 프로필·프로필 수정
 - [x] 일반 참가자 나가기
 - [x] 호스트 종료와 참가자 개인정보 삭제
-- [x] 자동 테스트 15개 통과
+- [x] 자동 테스트 32개 통과 (2026-08-15 기준)
 - [x] 실제 Daily 연결 및 종료 확인
 - [x] 로컬 임시 프론트 확인
 - [x] 한국어·영어 Web Speech 컨트롤러와 final 이벤트 경계
 - [x] 가짜 인식기를 사용한 Web Speech 자동 테스트
 - [ ] 실제 Chrome 마이크와 Daily 동시 사용 수동 확인
 - [ ] 정식 React 프론트
-- [x] F-02 OpenAI 추천 (단순형 — `/ai/pre-speech`, 회의 비연동, 3.3.1 참고)
-- [x] F-03 final transcript API·OpenAI 경고 (단순형 — `/ai/speech-feedback`, 회의 비연동, 3.3.1 참고)
-- [ ] AI 요청 rate limit/재시도 정책
-- [ ] `pre_speech_requests`/`speech_feedback` DB migration과 저장
-- [ ] AI 엔드포인트 참가자 토큰 인증 및 회의 맥락 연동
-- [ ] 30초 중복 경고 억제
+- [x] F-02/F-03 AI API (`/meetings/{meeting_id}/pre-speech`, `/speech-feedback/analyze` 등 6절 표 11~17번)
+- [x] 참가자 토큰 인증 및 회의 맥락 연동
+- [x] `pre_speech_requests`/`speech_feedback` DB migration과 저장 (10.3절)
+- [x] 30초 중복 경고 억제
+- [x] AI 요청 rate limit 재시도 정책 (`OPENAI_MAX_RETRIES`, 2026-08-15 완료)
 
-다음 스프린트는 AI DB migration과 위 회의 연동 항목을 별도 기능 단위로 진행한다.
+남은 건 정식 React 프론트와 실제 Chrome 마이크 수동 확인이다.

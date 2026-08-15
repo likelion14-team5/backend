@@ -2,6 +2,7 @@ const API_BASE = "http://127.0.0.1:8000/api/v1";
 
 const state = {
   meetingId: null,
+  participantId: null,
   token: null,
   role: null,
   shareUrl: null,
@@ -40,9 +41,7 @@ const elements = {
   speechCopy: document.querySelector("#speech-copy"),
   speechClear: document.querySelector("#speech-clear"),
   message: document.querySelector("#message"),
-  aiProficiency: document.querySelector("#ai-proficiency"),
-  aiCommunicationStyle: document.querySelector("#ai-communication-style"),
-  aiJobRole: document.querySelector("#ai-job-role"),
+  aiTargetParticipant: document.querySelector("#ai-target-participant"),
   aiKoreanText: document.querySelector("#ai-korean-text"),
   aiMeetingContext: document.querySelector("#ai-meeting-context"),
   aiPreSpeechBtn: document.querySelector("#ai-pre-speech-btn"),
@@ -198,13 +197,8 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-function aiCounterpartProfile() {
-  return {
-    proficiency: elements.aiProficiency.value,
-    communication_style: elements.aiCommunicationStyle.value,
-    job_role: elements.aiJobRole.value.trim() || "Product Manager",
-    additional_considerations: null,
-  };
+function aiTargetParticipantId() {
+  return elements.aiTargetParticipant.value || null;
 }
 
 function showAiResult(target, text, { error = false, flagged = false } = {}) {
@@ -223,16 +217,19 @@ elements.aiPreSpeechBtn.addEventListener("click", async () => {
 
   elements.aiPreSpeechBtn.disabled = true;
   try {
-    const response = await api("/ai/pre-speech", {
+    const response = await api(`/meetings/${state.meetingId}/pre-speech`, {
       method: "POST",
       body: JSON.stringify({
-        korean_text: koreanText,
-        counterpart_profile: aiCounterpartProfile(),
-        meeting_context: elements.aiMeetingContext.value.trim() || "일정 조율 회의",
+        input_ko: koreanText,
+        target_participant_id: aiTargetParticipantId(),
+        meeting_context: elements.aiMeetingContext.value.trim() || null,
       }),
     });
-    const { expression, reason } = response.data;
-    showAiResult(elements.aiPreSpeechResult, `"${expression}"\n\n${reason}`);
+    const { recommended_expression_en, recommendation_reason_ko } = response.data;
+    showAiResult(
+      elements.aiPreSpeechResult,
+      `"${recommended_expression_en}"\n\n${recommendation_reason_ko}`,
+    );
   } catch (error) {
     showAiResult(elements.aiPreSpeechResult, error.message, { error: true });
   } finally {
@@ -253,26 +250,31 @@ elements.aiSpeechFeedbackBtn.addEventListener("click", async () => {
 
   elements.aiSpeechFeedbackBtn.disabled = true;
   try {
-    const recentMessages = state.speechFinals
+    const recentContext = state.speechFinals
       .filter((item) => item.language === "en-US" && item !== latestEnglish)
       .map((item) => item.transcript)
-      .slice(-5);
+      .slice(-3)
+      .join("\n");
 
-    const response = await api("/ai/speech-feedback", {
+    const response = await api(`/meetings/${state.meetingId}/speech-feedback/analyze`, {
       method: "POST",
       body: JSON.stringify({
-        english_text: latestEnglish.transcript,
-        recent_messages: recentMessages,
-        counterpart_profile: aiCounterpartProfile(),
+        transcript: latestEnglish.transcript,
+        stt_confidence: latestEnglish.stt_confidence ?? null,
+        stt_source: latestEnglish.stt_source || "WEB_SPEECH",
+        recent_context: recentContext || null,
+        target_participant_id: aiTargetParticipantId(),
       }),
     });
     const result = response.data;
-    if (!result.flagged) {
+    if (!result.risk_detected) {
       showAiResult(elements.aiSpeechFeedbackResult, `"${latestEnglish.transcript}"\n\n문제 없음`);
     } else {
+      const { feedback, suppressed_duplicate } = result;
+      const suffix = suppressed_duplicate ? "\n\n(30초 내 동일 문장 재감지 — 새로 저장하지 않음)" : "";
       showAiResult(
         elements.aiSpeechFeedbackResult,
-        `"${latestEnglish.transcript}"\n\n[${result.type}] ${result.reason}\n\n대안: ${result.alternative}`,
+        `"${latestEnglish.transcript}"\n\n[${feedback.risk_type}] ${feedback.explanation_ko}\n\n대안: ${feedback.alternative_expression_en}${suffix}`,
         { flagged: true },
       );
     }
@@ -334,6 +336,7 @@ async function enterRoom(meetingId) {
 
   const context = contextResponse.data;
   const media = mediaResponse.data;
+  state.participantId = context.me.id;
   state.voiceAnalysisEnabled = Boolean(context.me.voice_analysis_enabled);
   state.shareUrl = `${window.location.origin}/join/${meetingId}`;
   elements.roomRole.textContent = `${context.me.role} · ${context.me.profile.display_name}`;
@@ -384,8 +387,22 @@ async function refreshParticipants() {
         return item;
       }),
     );
+    updateAiTargetOptions(response.data);
   } catch (error) {
     if (!state.exiting) showMessage(error.message);
+  }
+}
+
+function updateAiTargetOptions(participants) {
+  const select = elements.aiTargetParticipant;
+  const previous = select.value;
+  const others = participants.filter((participant) => participant.id !== state.participantId);
+  select.replaceChildren(
+    new Option("지정 안 함", ""),
+    ...others.map((participant) => new Option(`${participant.display_name} (${participant.job_title})`, participant.id)),
+  );
+  if (others.some((participant) => participant.id === previous)) {
+    select.value = previous;
   }
 }
 

@@ -21,6 +21,13 @@ os.environ["PUBLIC_APP_URL"] = "http://test.frontend"
 from app.api.dependencies import get_db  # noqa: E402
 from app.core.errors import AppError  # noqa: E402
 from app.main import app  # noqa: E402
+from app.schemas.ai import (  # noqa: E402
+    PreSpeechRequest,
+    PreSpeechResult,
+    SpeechFeedbackRequest,
+    SpeechFeedbackResult,
+)
+from app.services.ai_service import get_ai_service  # noqa: E402
 from app.services.daily_service import (  # noqa: E402
     DailyMediaSession,
     DailyRoom,
@@ -77,6 +84,39 @@ class FakeDailyService:
         self.deleted_rooms.append(room_name)
 
 
+@dataclass
+class FakeAiService:
+    pre_speech_result: PreSpeechResult | None = None
+    speech_feedback_result: SpeechFeedbackResult | None = None
+    fail_pre_speech: bool = False
+    fail_speech_feedback: bool = False
+    pre_speech_calls: list[PreSpeechRequest] = field(default_factory=list)
+    speech_feedback_calls: list[SpeechFeedbackRequest] = field(default_factory=list)
+
+    def generate_pre_speech(self, request: PreSpeechRequest) -> PreSpeechResult:
+        self.pre_speech_calls.append(request)
+        if self.fail_pre_speech:
+            raise AppError(502, "AI_PRE_SPEECH_FAILED", "AI 응답 생성에 실패했습니다.")
+        return self.pre_speech_result or PreSpeechResult(
+            expression="Given the timeline, could we revisit this?",
+            reason="테스트용 기본 추천입니다.",
+        )
+
+    def generate_speech_feedback(self, request: SpeechFeedbackRequest) -> SpeechFeedbackResult:
+        self.speech_feedback_calls.append(request)
+        if self.fail_speech_feedback:
+            raise AppError(502, "AI_SPEECH_FEEDBACK_FAILED", "AI 응답 생성에 실패했습니다.")
+        if self.speech_feedback_result is not None:
+            return self.speech_feedback_result
+        return SpeechFeedbackResult(
+            flagged=False,
+            original_text=request.english_text,
+            type=None,
+            reason=None,
+            alternative=None,
+        )
+
+
 @pytest.fixture(autouse=True)
 def clean_database() -> Generator[None, None, None]:
     with test_engine.begin() as connection:
@@ -92,7 +132,14 @@ def fake_daily() -> FakeDailyService:
 
 
 @pytest.fixture
-def client(fake_daily: FakeDailyService) -> Generator[TestClient, None, None]:
+def fake_ai() -> FakeAiService:
+    return FakeAiService()
+
+
+@pytest.fixture
+def client(
+    fake_daily: FakeDailyService, fake_ai: FakeAiService
+) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         session = TestSessionLocal()
         try:
@@ -102,6 +149,7 @@ def client(fake_daily: FakeDailyService) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_daily_service] = lambda: fake_daily
+    app.dependency_overrides[get_ai_service] = lambda: fake_ai
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

@@ -13,8 +13,11 @@ from app.models.meeting import Meeting
 from app.models.participant import Participant
 from app.schemas.meeting import MeetingStatus, ParticipantStatus
 from app.security.participant_token import hash_participant_token
+from app.services.ai_service import AiService, get_ai_service
 from app.services.daily_service import DailyService, get_daily_service
 from app.services.meeting_service import MeetingService
+from app.services.pre_speech_service import PreSpeechService
+from app.services.speech_feedback_service import SpeechFeedbackService
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,3 +65,17 @@ def get_meeting_service(
     daily: Annotated[DailyService, Depends(get_daily_service)],
 ) -> MeetingService:
     return MeetingService(db=db, daily=daily)
+
+
+def get_pre_speech_service(
+    db: Annotated[Session, Depends(get_db)],
+    ai: Annotated[AiService, Depends(get_ai_service)],
+) -> PreSpeechService:
+    return PreSpeechService(db=db, ai=ai)
+
+
+def get_speech_feedback_service(
+    db: Annotated[Session, Depends(get_db)],
+    ai: Annotated[AiService, Depends(get_ai_service)],
+) -> SpeechFeedbackService:
+    return SpeechFeedbackService(db=db, ai=ai)

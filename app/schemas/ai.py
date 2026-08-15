@@ -5,7 +5,9 @@ from pydantic import Field
 from app.schemas.common import ApiModel
 
 CounterpartProficiency = Literal["초급", "중급", "고급"]
-CounterpartCommunicationStyle = Literal["직접적", "균형적", "완곡한"]
+CounterpartCommunicationStyle = Literal[
+    "직접적", "균형적", "완곡한", "사실 중심적", "감정 표현이 풍부한"
+]
 
 SpeechFeedbackType = Literal[
     "직접적 거절",

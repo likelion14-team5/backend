@@ -35,7 +35,12 @@ PRE_SPEECH_SYSTEM_PROMPT = f"""당신은 글로벌 화상회의에서 한국인 
 규칙:
 1. expression은 실제 회의에서 바로 말할 수 있는 자연스러운 구어체 업무 영어여야 합니다. 단어 대 단어 직역은 금지하며, 화자의 의도와 뉘앙스는 유지하십시오.
 2. 상대방의 영어 숙련도가 "초급"이면 쉬운 단어와 짧고 단순한 문장 구조를 사용하고, 관용어(idiom)는 사용하지 마십시오. "중급"이면 표준적인 업무 어휘를 사용하십시오. "고급"이면 보다 정교하고 자연스러운 표현을 사용해도 됩니다.
-3. 상대방의 선호 소통 방식이 "직접적"이면 요점을 명확하고 간결하게, "완곡한"이면 쿠션어와 부드러운 표현을 더 사용하고, "균형적"이면 그 중간 톤을 사용하십시오.
+3. 상대방의 선호 소통 방식에 따라 아래 5가지 기준으로 명확히 구분해서 표현하십시오. 서로 다른 방식이 비슷한 문장으로 나오지 않게 하십시오 — 아래 각 방식은 서로 다른 축(헤지 개수, 근거의 종류, 감정 표현 여부)으로 구분됩니다.
+   - "직접적": 쿠션어 없이 사실과 요청을 바로 말합니다. 조동사(might, could, may)보다 단정적 표현(need, will, is)을 씁니다.
+   - "완곡한": 문장 안에 쿠션어·조동사를 2개 이상 겹쳐 씁니다 (예: "I was wondering if...", "it might possibly...", "if that's alright"). 핵심 요청은 문장 뒷부분에 놓고 앞부분은 완충 표현으로 채웁니다.
+   - "균형적": 핵심 메시지는 단정적 표현으로 명확하게 먼저 말하고, 그 뒤에 짧은 정중구 한 개만 덧붙입니다 (예: "..., if that works for you.", "..., but happy to discuss."). 쿠션어를 문장 앞부분이나 여러 개 겹쳐 쓰지 않습니다 — "완곡한"과 달리 망설임 없이 요점부터 말합니다.
+   - "사실 중심적": 의견이나 감정 표현("I think", "I feel") 대신 구체적인 사실·수치·기준을 근거로 제시합니다 (예: "Based on the current sprint velocity, ...", "Given the two remaining tasks, ..."). 감탄사나 감정 어휘는 쓰지 않습니다.
+   - "감정 표현이 풍부한": 감사·우려·기대 같은 감정을 나타내는 어휘를 문장에 명시적으로 포함합니다 (예: "I really appreciate...", "I'm a bit worried that...", "It would mean a lot if..."). 사실 중심적과 반대로 팀 분위기나 관계에 대한 언급을 포함해도 됩니다.
 4. 상대방의 직무, 회의 맥락, 추가 고려사항을 반영하여 전문 용어 사용 여부와 격식을 조정하십시오.
 5. reason은 한국어 2문장 이내로 간결하게 작성하십시오.
 6. {NO_GENERALIZATION_PRINCIPLE}
@@ -52,7 +57,15 @@ PRE_SPEECH_SYSTEM_PROMPT = f"""당신은 글로벌 화상회의에서 한국인 
 
 [예시 3] 숙련도=중급, 소통방식=균형적, 직무=Product Manager, 맥락=의사결정 회의
 입력 문장: "다른 팀 의견도 들어보면 좋을 것 같아요"
-출력: {{"expression": "It might be worth getting input from the other team as well.", "reason": "중급 수준의 표준 어휘와 균형적인 톤으로 제안 형태로 부드럽게 전달했습니다."}}"""
+출력: {{"expression": "Let's get input from the other team too, if that works for everyone.", "reason": "제안을 단정적으로 먼저 말하고, 문장 끝에 짧은 정중구 하나만 덧붙여 완곡한 방식과 구분되는 균형적인 톤을 유지했습니다."}}
+
+[예시 4] 숙련도=고급, 소통방식=사실 중심적, 직무=Data Analyst, 맥락=일정 조율 회의
+입력 문장: "이 일정은 솔직히 어려울 것 같아요"
+출력: {{"expression": "Based on the current two-week sprint scope, this deadline leaves no buffer for testing.", "reason": "의견 대신 스프린트 범위라는 구체적 근거를 제시해 사실 중심적인 방식을 반영했습니다."}}
+
+[예시 5] 숙련도=중급, 소통방식=감정 표현이 풍부한, 직무=Designer, 맥락=일정 조율 회의
+입력 문장: "이 일정은 솔직히 어려울 것 같아요"
+출력: {{"expression": "I'm honestly a bit worried this timeline might put a lot of pressure on the team.", "reason": "감정 표현이 풍부한 방식을 반영해 우려라는 감정을 명시적으로 드러냈습니다."}}"""
 
 
 SPEECH_FEEDBACK_SYSTEM_PROMPT = f"""당신은 글로벌 화상회의 중 한국인 사용자가 방금 한 영어 발언이 상대방에게 오해나 마찰을 일으킬 가능성이 있는지 점검하는 어시스턴트입니다.
@@ -101,6 +114,42 @@ ALLOWED_FEEDBACK_TYPES = {
     "관용어/속어",
     "고려사항 충돌",
 }
+
+# ---- participants 테이블(영어 enum) <-> 프롬프트(한국어 리터럴) 매핑 ----
+# 프롬프트는 오늘 일관성 테스트로 검증된 상태라 그대로 두고, DB에서 읽은
+# 영어 값을 프롬프트가 이해하는 한국어 값으로 변환하는 용도로만 사용한다.
+
+PROFICIENCY_TO_KOREAN = {
+    "BEGINNER": "초급",
+    "INTERMEDIATE": "중급",
+    "ADVANCED": "고급",
+}
+
+COMMUNICATION_STYLE_TO_KOREAN = {
+    "DIRECT": "직접적",
+    "INDIRECT": "완곡한",
+    "BALANCED": "균형적",
+    "FACT_FOCUSED": "사실 중심적",
+    "EMOTION_EXPRESSIVE": "감정 표현이 풍부한",
+}
+
+FEEDBACK_TYPE_TO_RISK_TYPE = {
+    "직접적 거절": "DIRECT_REJECTION",
+    "공격적 표현": "PERSONAL_ATTACK",
+    "모호한 표현": "AMBIGUOUS_INTENT",
+    "관용어/속어": "IDIOM_OR_JOKE",
+    "고려사항 충돌": "PROFILE_CONFLICT",
+}
+
+
+def map_risk_type(feedback_type: str | None) -> str:
+    """AI가 반환한 한국어 type을 speech_feedback.risk_type 영어 enum으로 변환한다.
+
+    매핑에 없는 값은 DB CHECK 제약을 만족시키기 위해 OTHER로 처리한다.
+    """
+    if feedback_type is None:
+        return "OTHER"
+    return FEEDBACK_TYPE_TO_RISK_TYPE.get(feedback_type, "OTHER")
 
 
 def _profile_block(profile: CounterpartProfile) -> str:
@@ -181,6 +230,8 @@ class AiService:
             self._client = OpenAI(
                 api_key=api_key,
                 timeout=self.settings.openai_request_timeout_seconds,
+                # 429(rate limit)·5xx·연결 오류에 대해 SDK가 지수 백오프로 재시도한다.
+                max_retries=self.settings.openai_max_retries,
             )
         return self._client
 
