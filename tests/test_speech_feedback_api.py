@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.models.participant import Participant
 from app.models.speech_feedback import SpeechFeedback
 from app.schemas.ai import SpeechFeedbackResult
 from tests.conftest import FakeAiService
@@ -82,7 +83,27 @@ def test_analyze_requires_consent(client: TestClient) -> None:
         headers=token_header(token),
     )
     assert response.status_code == 403
-    assert response.json()["error"]["code"] == "VOICE_CONSENT_REQUIRED"
+    assert response.json()["error"]["code"] == "VOICE_ANALYSIS_CONSENT_REQUIRED"
+
+
+def test_analyze_requires_enabled_when_consented(client: TestClient, db: Session) -> None:
+    created = create_meeting(client, host_name="Jiwon")
+    meeting_id = created["meeting"]["id"]
+    member = join_meeting(client, meeting_id, "Alex")  # voice_analysis_consent=True by default
+    db.execute(
+        update(Participant)
+        .where(Participant.id == member["participant"]["id"])
+        .values(voice_analysis_enabled=False)
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting_id}/speech-feedback/analyze",
+        json={"transcript": "That schedule is impossible."},
+        headers=token_header(member["participant_token"]),
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "VOICE_ANALYSIS_DISABLED"
 
 
 def test_analyze_uses_specified_target_over_auto_pick(
@@ -160,8 +181,8 @@ def test_analyze_blocks_self_target(client: TestClient) -> None:
         headers=token_header(member["participant_token"]),
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SELF_TARGET_NOT_ALLOWED"
 
 
 def test_analyze_blocks_target_from_other_meeting(client: TestClient) -> None:
@@ -178,8 +199,8 @@ def test_analyze_blocks_target_from_other_meeting(client: TestClient) -> None:
         headers=token_header(member["participant_token"]),
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "TARGET_PARTICIPANT_NOT_FOUND"
 
 
 def test_analyze_duplicate_suppressed_within_30s(

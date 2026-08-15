@@ -79,8 +79,8 @@ def test_create_pre_speech_self_target_rejected(client: TestClient) -> None:
         json={"input_ko": "안녕하세요", "target_participant_id": host_id},
         headers=token_header(token),
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SELF_TARGET_NOT_ALLOWED"
 
 
 def test_create_pre_speech_target_not_in_meeting(client: TestClient) -> None:
@@ -93,8 +93,8 @@ def test_create_pre_speech_target_not_in_meeting(client: TestClient) -> None:
         json={"input_ko": "안녕하세요", "target_participant_id": str(uuid4())},
         headers=token_header(token),
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "TARGET_NOT_IN_MEETING"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "TARGET_PARTICIPANT_NOT_FOUND"
 
 
 def test_regenerate_links_parent(client: TestClient, db: Session) -> None:

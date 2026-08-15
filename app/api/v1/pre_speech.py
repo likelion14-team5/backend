@@ -27,7 +27,7 @@ def error_responses(*status_codes: int) -> dict[int, dict[str, object]]:
     status_code=status.HTTP_201_CREATED,
     operation_id="createPreSpeech",
     summary="F-02 발언 전 추천 생성",
-    responses=error_responses(400, 401, 404, 409, 422, 502),
+    responses=error_responses(401, 404, 409, 422, 502),
 )
 def create_pre_speech(
     request: PreSpeechCreateRequest,

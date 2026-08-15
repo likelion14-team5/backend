@@ -140,6 +140,11 @@
 
 **F-03 대상 참가자 지정 (2026-08-15 해결):** PR#3의 또 다른 "알려진 단순화" 항목 — F-03은 상대방을 지정하는 필드가 없어서 항상 "같은 회의에서 가장 먼저 입장한 다른 참가자"를 상대방으로 썼다 (3인 이상 회의에서는 부정확할 수 있음). `SpeechFeedbackAnalyzeRequest`에 F-02와 동일한 `target_participant_id`(선택)를 추가했다. 지정하면 F-02와 같은 검증(자기 자신 차단, 같은 회의 소속 확인)을 거쳐 그 참가자 프로필을 쓰고, 지정하지 않으면 기존 자동 선택 동작을 그대로 유지한다 (하위 호환).
 
+**에러 코드 세분화 (2026-08-15 해결):** PR#3의 세 번째 "알려진 단순화" 항목 — target/self 검증과 동의 부족이 각각 `TARGET_NOT_IN_MEETING`/`VOICE_CONSENT_REQUIRED` 하나로 통일 처리되어 있어서, 프론트가 서로 다른 실패 상황(예: "본인 선택 불가" vs "그런 참가자 없음")을 에러 코드만으로 구분할 수 없었다. F-02/F-03 공통으로 다음처럼 분리했다.
+- `SELF_TARGET_NOT_ALLOWED` (422) — 본인을 대상으로 지정
+- `TARGET_PARTICIPANT_NOT_FOUND` (404) — 대상이 같은 회의 소속이 아니거나 존재하지 않음
+- F-03 전용: `VOICE_ANALYSIS_CONSENT_REQUIRED` (403, 동의 자체가 없음) / `VOICE_ANALYSIS_DISABLED` (403, 동의는 했지만 꺼져 있음)
+
 **응답 속도:** `tests/manual_qa/latency_check.py` 5회 반복 실측 (2026-08-14) — F-02 평균 1.97s(1.10~3.58s), F-03 평균 1.61s(1.19~2.41s).
 
 **OpenAI 계정 rate limit 이슈 (2026-08-15 해결):** `.env`의 `OPENAI_API_KEY`가 실제로는 조직(Tier 1, 결제 완료)이 아니라 다른 계정 소속 키라서 `gpt-4o-mini` 요청이 하루 50건(RPD)으로 제한되고 있었다. 조직 대시보드(Settings → Limits)에는 "Tier 1"로 표시돼 혼동이 있었는데, 실제 원인은 `.env`의 키 자체가 그 조직 소속이 아니었던 것이었다. 조직 소속 키를 새로 발급해서 `.env`에 반영 — 하루 10,000건(TPM 200,000)으로 확인됨. 모델 문제가 아니었다 (`gpt-5.4-mini`로도 동일하게 50건 제한이 걸려 있었음, 키를 바꾸자 바로 해결).
@@ -1293,8 +1298,8 @@ OpenAI 공식 참고:
 
 ### 19.3 F-03
 
-- [x] 동의 없음 분석 차단 — `test_analyze_requires_consent` (동의 부족과 target 부족을 `VOICE_CONSENT_REQUIRED` 하나로 통일 처리, 3.3.1절 "알려진 단순화" 참고)
-- [ ] 분석 OFF 요청 차단 (동의는 했지만 `voice_analysis_enabled=false`인 경우의 전용 테스트는 없음)
+- [x] 동의 없음 분석 차단 — `test_analyze_requires_consent` (`VOICE_ANALYSIS_CONSENT_REQUIRED`, 2026-08-15부터 `VOICE_ANALYSIS_DISABLED`와 분리됨)
+- [x] 분석 OFF 요청 차단 — `test_analyze_requires_enabled_when_consented` (`VOICE_ANALYSIS_DISABLED`, 2026-08-15 추가)
 - [x] 위험 없음 `feedback=null` — `test_analyze_not_saved_when_no_risk`
 - [x] 위험 있음 DB 저장 — `test_analyze_saves_when_risk_detected`
 - [x] 동일 문장 30초 중복 억제 — `test_analyze_duplicate_suppressed_within_30s`

@@ -50,7 +50,9 @@ class SpeechFeedbackService:
     ) -> Participant | None:
         if target_participant_id is not None:
             if target_participant_id == requester_id:
-                raise AppError(400, "TARGET_NOT_IN_MEETING", "본인을 대상으로 선택할 수 없습니다.")
+                raise AppError(
+                    422, "SELF_TARGET_NOT_ALLOWED", "본인을 대상으로 선택할 수 없습니다."
+                )
             target = self.db.scalar(
                 select(Participant).where(
                     Participant.id == target_participant_id,
@@ -60,7 +62,7 @@ class SpeechFeedbackService:
             )
             if target is None:
                 raise AppError(
-                    400, "TARGET_NOT_IN_MEETING", "같은 회의의 참가자만 선택할 수 있습니다."
+                    404, "TARGET_PARTICIPANT_NOT_FOUND", "같은 회의의 참가자만 선택할 수 있습니다."
                 )
             return target
         # 대상을 지정하지 않으면 같은 회의에서 가장 먼저 입장한 다른 참가자를 사용한다 (기존 동작).
@@ -121,10 +123,12 @@ class SpeechFeedbackService:
         participant: Participant,
         request: SpeechFeedbackAnalyzeRequest,
     ) -> SpeechFeedbackAnalyzeResult:
-        if not participant.voice_analysis_consent or not participant.voice_analysis_enabled:
+        if not participant.voice_analysis_consent:
             raise AppError(
-                403, "VOICE_CONSENT_REQUIRED", "음성 분석 동의 또는 활성화가 필요합니다."
+                403, "VOICE_ANALYSIS_CONSENT_REQUIRED", "음성 분석에 동의해야 합니다."
             )
+        if not participant.voice_analysis_enabled:
+            raise AppError(403, "VOICE_ANALYSIS_DISABLED", "음성 분석이 꺼져 있습니다.")
 
         target = self._resolve_target(meeting_id, participant.id, request.target_participant_id)
         ai_result = self.ai.generate_speech_feedback(

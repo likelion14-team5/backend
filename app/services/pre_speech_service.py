@@ -30,7 +30,7 @@ class PreSpeechService:
         if target_participant_id is None:
             return None
         if target_participant_id == requester_id:
-            raise AppError(400, "TARGET_NOT_IN_MEETING", "본인을 대상으로 선택할 수 없습니다.")
+            raise AppError(422, "SELF_TARGET_NOT_ALLOWED", "본인을 대상으로 선택할 수 없습니다.")
         target = self.db.scalar(
             select(Participant).where(
                 Participant.id == target_participant_id,
@@ -39,7 +39,9 @@ class PreSpeechService:
             )
         )
         if target is None:
-            raise AppError(400, "TARGET_NOT_IN_MEETING", "같은 회의의 참가자만 선택할 수 있습니다.")
+            raise AppError(
+                404, "TARGET_PARTICIPANT_NOT_FOUND", "같은 회의의 참가자만 선택할 수 있습니다."
+            )
         return target
 
     @staticmethod
