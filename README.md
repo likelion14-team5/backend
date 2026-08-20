@@ -106,3 +106,5 @@ $env:DATABASE_URL=$env:TEST_DATABASE_URL
 ```
 
 테스트는 전체 회의 수명주기, Daily 요청 계약, 토큰 격리, 공개 정보 제한, 프로필 수정, 이름 중복, HOST 권한, 종료 시 개인정보 삭제와 PostgreSQL `FOR UPDATE` 기반 동시 입장 정원 제한을 검증합니다.
+
+CI/CD 자동 배포 테스트 문구입니다.
