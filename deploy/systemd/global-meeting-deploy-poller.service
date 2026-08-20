@@ -1,0 +1,12 @@
+[Unit]
+Description=Deploy Global Meeting after both GitHub main branches pass CI
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+Environment=DEPLOY_ROOT=/opt/global-meeting
+ExecStart=/usr/local/bin/poll-global-meeting

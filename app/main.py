@@ -36,6 +36,11 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    @app.get("/health", include_in_schema=False)
+    async def healthcheck() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 

@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 .coverage
 .env
+.env.docker.local
 .pytest_cache/
 pytest-cache-files-*/
 .ruff_cache/

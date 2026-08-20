@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll GitHub CI state for Global Meeting deployment
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Persistent=true
+Unit=global-meeting-deploy-poller.service
+
+[Install]
+WantedBy=timers.target

@@ -16,6 +16,9 @@
 
 Python 3.12와 Docker가 필요합니다.
 
+AWS 단일 EC2에서 프론트엔드·백엔드·PostgreSQL을 Docker Compose로 배포하는 절차는
+`docs/AWS_EC2_DOCKER_DEPLOYMENT.md`를 참고하세요.
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
