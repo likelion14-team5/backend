@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.14,<2",
     "fastapi>=0.115,<1",
     "httpx>=0.28,<1",
+    "openai>=2.0,<3",
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.7,<3",
     "sqlalchemy>=2.0,<3",
@@ -40,3 +41,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# LLM 시스템 프롬프트는 한국어 자연어 문단이라 100자 줄 길이 규칙을 적용하지 않는다.
+"app/services/ai_service.py" = ["E501"]

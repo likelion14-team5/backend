@@ -11,8 +11,15 @@ MEETING_SCOPE_OPERATIONS = {
     },
     "/meetings/{meeting_id}/participants/{participant_id}": {"get": "getParticipantProfile"},
     "/meetings/{meeting_id}/participants/me/profile": {"patch": "updateMyProfile"},
+    "/meetings/{meeting_id}/participants/me/voice-analysis": {"patch": "setVoiceAnalysis"},
     "/meetings/{meeting_id}/leave": {"post": "leaveMeeting"},
     "/meetings/{meeting_id}/end": {"post": "endMeeting"},
+    "/meetings/{meeting_id}/pre-speech": {"post": "createPreSpeech"},
+    "/meetings/{meeting_id}/pre-speech/{request_id}": {"get": "getPreSpeech"},
+    "/meetings/{meeting_id}/pre-speech/{request_id}/regenerate": {"post": "regeneratePreSpeech"},
+    "/meetings/{meeting_id}/speech-feedback/analyze": {"post": "analyzeSpeechFeedback"},
+    "/meetings/{meeting_id}/speech-feedback": {"get": "listSpeechFeedback"},
+    "/meetings/{meeting_id}/speech-feedback/{feedback_id}": {"patch": "dismissSpeechFeedback"},
 }
 
 
@@ -33,9 +40,8 @@ def test_implemented_operations_match_supplied_contract() -> None:
     }
 
 
-def test_ai_and_voice_analysis_routes_are_not_in_current_backend_scope() -> None:
+def test_standalone_ai_endpoints_removed() -> None:
     generated_paths = set(app.openapi()["paths"])
 
-    assert not any("pre-speech" in path for path in generated_paths)
-    assert not any("speech-feedback" in path for path in generated_paths)
-    assert not any("voice-analysis" in path for path in generated_paths)
+    assert "/api/v1/ai/pre-speech" not in generated_paths
+    assert "/api/v1/ai/speech-feedback" not in generated_paths

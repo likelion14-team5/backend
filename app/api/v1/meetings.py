@@ -23,6 +23,7 @@ from app.schemas.meeting import (
     ParticipantRole,
     ProfileUpdateRequest,
     PublicMeetingResponse,
+    VoiceAnalysisToggleRequest,
 )
 from app.services.meeting_service import MeetingService
 
@@ -178,6 +179,24 @@ def update_my_profile(
     service: Annotated[MeetingService, Depends(get_meeting_service)],
 ) -> ParticipantProfileResponse:
     return ParticipantProfileResponse(data=service.update_profile(context.participant, request))
+
+
+@router.patch(
+    "/{meeting_id}/participants/me/voice-analysis",
+    response_model=ParticipantProfileResponse,
+    tags=["Participants"],
+    operation_id="setVoiceAnalysis",
+    summary="F-03 음성 분석 ON/OFF",
+    responses=error_responses(401, 403, 404, 409),
+)
+def set_voice_analysis(
+    request: VoiceAnalysisToggleRequest,
+    context: Annotated[ParticipantContext, Depends(get_participant_context)],
+    service: Annotated[MeetingService, Depends(get_meeting_service)],
+) -> ParticipantProfileResponse:
+    return ParticipantProfileResponse(
+        data=service.set_voice_analysis(context.participant, request.voice_analysis_enabled)
+    )
 
 
 @router.post(
